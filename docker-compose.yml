@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    container_name: loaneasy-api
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - APP_MODE=prod
+      - PORT=3000
+      # Database
+      - PROD_DB_HOST=127.0.0.1
+      - PROD_DB_PORT=3306
+      - PROD_DB_USER=loanhub_user
+      - PROD_DB_PASS=LoanHub2026
+      - PROD_DB_NAME=spsc_loaneasy
+      # JWT
+      - PROD_JWT_SECRET=spsc-loaneasy-jwt-secret-2026-production-key-very-long-string-abc123
+      - PROD_JWT_REFRESH_SECRET=spsc-loaneasy-refresh-secret-2026-production-key-xyz789
+      - ACCESS_TOKEN_MINUTES=15
+      - REFRESH_TOKEN_DAYS=7
+      # Cookie
+      - PROD_COOKIE_SECURE=true
+      # CORS
+      - ALLOWED_ORIGINS=https://loanspsc.com,https://admin.loanspsc.com
+      # LINE Login
+      - LINE_CHANNEL_ID=2008732397
+      - LINE_CHANNEL_SECRET=db0aa45d650e7d68d2931f1c29dde60e
+      - LINE_CALLBACK_URL=https://api.loanspsc.com/api/v1/auth/line/callback
+      # LINE Messaging API (ต้องขอ token เพิ่ม)
+      - LINE_CHANNEL_ACCESS_TOKEN=YOUR_MESSAGING_API_CHANNEL_ACCESS_TOKEN
+      # Web App URL
+      - WEB_APP_URL=https://loanspsc.com,https://admin.loanspsc.com

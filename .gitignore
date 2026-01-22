@@ -1,0 +1,12 @@
+.env
+*.env
+.env.*
+*.log
+logs/
+vendor/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+main
+/cmd/serv

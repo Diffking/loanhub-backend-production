@@ -31,6 +31,8 @@ func (r *MortgageRepository) GetByID(ctx context.Context, id uint) (*models.Mort
 		Preload("Creator").
 		Preload("LoanType").
 		Preload("CurrentStep").
+		Preload("CurrentAppt").
+		Preload("CurrentDoc").
 		Preload("Approver").
 		First(&mortgage, id).Error
 	return &mortgage, err
@@ -42,6 +44,7 @@ func (r *MortgageRepository) GetByMembNo(ctx context.Context, membNo string) ([]
 	err := r.db.WithContext(ctx).
 		Preload("LoanType").
 		Preload("CurrentStep").
+		Preload("CurrentAppt").
 		Where("memb_no = ?", membNo).
 		Order("created_at DESC").
 		Find(&mortgages).Error
@@ -59,6 +62,7 @@ func (r *MortgageRepository) List(ctx context.Context, offset, limit int) ([]*mo
 		Preload("Officer").
 		Preload("LoanType").
 		Preload("CurrentStep").
+		Preload("CurrentAppt").
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(limit).
@@ -77,6 +81,7 @@ func (r *MortgageRepository) ListByOfficer(ctx context.Context, officerID uint, 
 	err := r.db.WithContext(ctx).
 		Preload("LoanType").
 		Preload("CurrentStep").
+		Preload("CurrentAppt").
 		Where("officer_id = ?", officerID).
 		Order("created_at DESC").
 		Offset(offset).
@@ -97,6 +102,7 @@ func (r *MortgageRepository) ListByStep(ctx context.Context, stepID uint, offset
 		Preload("Officer").
 		Preload("LoanType").
 		Preload("CurrentStep").
+		Preload("CurrentAppt").
 		Where("current_step_id = ?", stepID).
 		Order("created_at DESC").
 		Offset(offset).
@@ -142,89 +148,4 @@ func (r *TransactionRepository) GetByMortgageID(ctx context.Context, mortgageID 
 		Order("created_at DESC").
 		Find(&transactions).Error
 	return transactions, err
-}
-
-// LoanDocCurrentRepository handles loan doc current data access
-type LoanDocCurrentRepository struct {
-	db *gorm.DB
-}
-
-// NewLoanDocCurrentRepository creates a new loan doc current repository
-func NewLoanDocCurrentRepository(db *gorm.DB) *LoanDocCurrentRepository {
-	return &LoanDocCurrentRepository{db: db}
-}
-
-// Create creates a new loan doc current
-func (r *LoanDocCurrentRepository) Create(ctx context.Context, doc *models.LoanDocCurrent) error {
-	return r.db.WithContext(ctx).Create(doc).Error
-}
-
-// CreateBatch creates multiple loan doc currents
-func (r *LoanDocCurrentRepository) CreateBatch(ctx context.Context, docs []*models.LoanDocCurrent) error {
-	return r.db.WithContext(ctx).Create(docs).Error
-}
-
-// GetByMortgageID gets loan doc currents by mortgage ID
-func (r *LoanDocCurrentRepository) GetByMortgageID(ctx context.Context, mortgageID uint) ([]*models.LoanDocCurrent, error) {
-	var docs []*models.LoanDocCurrent
-	err := r.db.WithContext(ctx).
-		Preload("LoanDoc").
-		Preload("Checker").
-		Where("mortgage_id = ?", mortgageID).
-		Find(&docs).Error
-	return docs, err
-}
-
-// Update updates a loan doc current
-func (r *LoanDocCurrentRepository) Update(ctx context.Context, doc *models.LoanDocCurrent) error {
-	return r.db.WithContext(ctx).Save(doc).Error
-}
-
-// GetByID gets a loan doc current by ID
-func (r *LoanDocCurrentRepository) GetByID(ctx context.Context, id uint) (*models.LoanDocCurrent, error) {
-	var doc models.LoanDocCurrent
-	err := r.db.WithContext(ctx).First(&doc, id).Error
-	return &doc, err
-}
-
-// LoanApptCurrentRepository handles loan appt current data access
-type LoanApptCurrentRepository struct {
-	db *gorm.DB
-}
-
-// NewLoanApptCurrentRepository creates a new loan appt current repository
-func NewLoanApptCurrentRepository(db *gorm.DB) *LoanApptCurrentRepository {
-	return &LoanApptCurrentRepository{db: db}
-}
-
-// Create creates a new loan appt current
-func (r *LoanApptCurrentRepository) Create(ctx context.Context, appt *models.LoanApptCurrent) error {
-	return r.db.WithContext(ctx).Create(appt).Error
-}
-
-// GetByID gets a loan appt current by ID
-func (r *LoanApptCurrentRepository) GetByID(ctx context.Context, id uint) (*models.LoanApptCurrent, error) {
-	var appt models.LoanApptCurrent
-	err := r.db.WithContext(ctx).
-		Preload("LoanAppt").
-		Preload("Officer").
-		First(&appt, id).Error
-	return &appt, err
-}
-
-// GetByMortgageID gets loan appt currents by mortgage ID
-func (r *LoanApptCurrentRepository) GetByMortgageID(ctx context.Context, mortgageID uint) ([]*models.LoanApptCurrent, error) {
-	var appts []*models.LoanApptCurrent
-	err := r.db.WithContext(ctx).
-		Preload("LoanAppt").
-		Preload("Officer").
-		Where("mortgage_id = ?", mortgageID).
-		Order("created_at DESC").
-		Find(&appts).Error
-	return appts, err
-}
-
-// Update updates a loan appt current
-func (r *LoanApptCurrentRepository) Update(ctx context.Context, appt *models.LoanApptCurrent) error {
-	return r.db.WithContext(ctx).Save(appt).Error
 }

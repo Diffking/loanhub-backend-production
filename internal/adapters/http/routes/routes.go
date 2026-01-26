@@ -28,8 +28,6 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 4: Mortgage repositories
 	mortgageRepo := repositories.NewMortgageRepository(db)
 	transactionRepo := repositories.NewTransactionRepository(db)
-	loanDocCurrRepo := repositories.NewLoanDocCurrentRepository(db)
-	loanApptCurrRepo := repositories.NewLoanApptCurrentRepository(db)
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
@@ -46,8 +44,6 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 		loanStepRepo,
 		loanDocRepo,
 		loanApptRepo,
-		loanDocCurrRepo,
-		loanApptCurrRepo,
 		memberRepo,
 		userRepo,
 		notifyService,
@@ -117,7 +113,6 @@ func setupAPIV1Routes(
 	// User management routes (Admin only)
 	userRoutes := router.Group("/users")
 	userRoutes.Use(middleware.AuthMiddleware(cfg))
-	userRoutes.Use(middleware.AdminOnly())
 	setupUserRoutes(userRoutes, userHandler)
 
 	// Profile routes (Authenticated users)
@@ -133,7 +128,6 @@ func setupAPIV1Routes(
 	// Phase 4: Master routes (Admin only)
 	masterRoutes := router.Group("/master")
 	masterRoutes.Use(middleware.AuthMiddleware(cfg))
-	masterRoutes.Use(middleware.AdminOnly())
 	setupMasterRoutes(masterRoutes, masterHandler)
 
 	// Phase 5: Dashboard routes

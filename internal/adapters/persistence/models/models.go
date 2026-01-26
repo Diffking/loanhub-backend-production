@@ -180,6 +180,11 @@ type Mortgage struct {
 	InterestRate    float64        `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
 	CurrentStepID   uint           `gorm:"not null" json:"current_step_id"`
 	CurrentApptID   *uint          `json:"current_appt_id"`
+        CurrentDocID   *uint          `json:"current_doc_id"`
+        ApptDate     *time.Time `gorm:"type:date" json:"appt_date"`
+        ApptTime     string     `gorm:"size:10" json:"appt_time"`
+        ApptLocation string     `gorm:"size:200" json:"appt_location"`
+        ApptStatus   string     `gorm:"size:20;default:PENDING" json:"appt_status"`
 	ApprovedBy      *uint          `json:"approved_by"`
 	ApprovedAt      *time.Time     `json:"approved_at"`
 	Remark          string         `gorm:"type:text" json:"remark"`
@@ -192,6 +197,8 @@ type Mortgage struct {
 	Creator     *User            `gorm:"foreignKey:UserID" json:"creator,omitempty"`
 	LoanType    *LoanType        `gorm:"foreignKey:LoanTypeID" json:"loan_type,omitempty"`
 	CurrentStep *LoanStep        `gorm:"foreignKey:CurrentStepID" json:"current_step,omitempty"`
+        CurrentAppt  *LoanApptCurrent `gorm:"foreignKey:CurrentApptID" json:"current_appt,omitempty"`
+        CurrentDoc   *LoanDoc       `gorm:"foreignKey:CurrentDocID" json:"current_doc,omitempty"`
 	Approver    *User            `gorm:"foreignKey:ApprovedBy" json:"approver,omitempty"`
 	Documents   []LoanDocCurrent `gorm:"foreignKey:MortgageID" json:"documents,omitempty"`
 }

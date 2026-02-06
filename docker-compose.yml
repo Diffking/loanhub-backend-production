@@ -21,9 +21,10 @@ services:
       # Cookie
       - PROD_COOKIE_SECURE=true
       # CORS
-      - ALLOWED_ORIGINS=https://loanspsc.com,https://admin.loanspsc.com
+      - ALLOWED_ORIGINS=https://loanspsc.com,https://admin.loanspsc.com,https://user.loanspsc.com
       # LINE Login
       - LINE_CHANNEL_ID=2008732397
+      - LIFF_CHANNEL_ID=2008944602
       - LINE_CHANNEL_SECRET=db0aa45d650e7d68d2931f1c29dde60e
       - LINE_CALLBACK_URL=https://api.loanspsc.com/api/v1/auth/line/callback
       # LINE Messaging API (ต้องขอ token เพิ่ม)

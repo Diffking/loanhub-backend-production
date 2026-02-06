@@ -16,6 +16,7 @@ import (
 // LINEConfig holds LINE API configuration
 type LINEConfig struct {
 	ChannelID     string
+	LIFFChannelID string // ✅ LIFF Channel ID (อาจต่างจาก LINE Login Channel)
 	ChannelSecret string
 	CallbackURL   string
 }
@@ -55,11 +56,15 @@ type LINETokenVerifyResponse struct {
 }
 
 // NewLINEService creates a new LINE service
-func NewLINEService(db *gorm.DB, channelID, channelSecret, callbackURL string) *LINEService {
+func NewLINEService(db *gorm.DB, channelID, channelSecret, callbackURL, liffChannelID string) *LINEService {
+	if liffChannelID == "" {
+		liffChannelID = channelID // fallback ใช้ตัวเดียวกัน
+	}
 	return &LINEService{
 		db: db,
 		config: LINEConfig{
 			ChannelID:     channelID,
+			LIFFChannelID: liffChannelID,
 			ChannelSecret: channelSecret,
 			CallbackURL:   callbackURL,
 		},
@@ -185,9 +190,9 @@ func (s *LINEService) VerifyAccessToken(accessToken string) (*LINETokenVerifyRes
 	}
 
 	// ✅ ตรวจสอบว่า token มาจาก Channel ของเราจริง
-	if verifyResp.ClientID != s.config.ChannelID {
-		return nil, fmt.Errorf("LINE token channel_id mismatch: expected %s, got %s",
-			s.config.ChannelID, verifyResp.ClientID)
+	if verifyResp.ClientID != s.config.ChannelID && verifyResp.ClientID != s.config.LIFFChannelID {
+		return nil, fmt.Errorf("LINE token channel_id mismatch: expected %s or %s, got %s",
+			s.config.ChannelID, s.config.LIFFChannelID, verifyResp.ClientID)
 	}
 
 	// ตรวจว่า token ยังไม่หมดอายุ

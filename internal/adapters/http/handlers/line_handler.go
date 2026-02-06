@@ -30,6 +30,7 @@ func NewLINEHandler(db *gorm.DB) *LINEHandler {
 	channelID := os.Getenv("LINE_CHANNEL_ID")
 	channelSecret := os.Getenv("LINE_CHANNEL_SECRET")
 	callbackURL := os.Getenv("LINE_CALLBACK_URL")
+	liffChannelID := os.Getenv("LIFF_CHANNEL_ID") // ✅ LIFF Channel ID
 	jwtSecret := os.Getenv("PROD_JWT_SECRET")
 
 	if callbackURL == "" {
@@ -52,7 +53,7 @@ func NewLINEHandler(db *gorm.DB) *LINEHandler {
 	}
 
 	return &LINEHandler{
-		lineService:     services.NewLINEService(db, channelID, channelSecret, callbackURL),
+		lineService:     services.NewLINEService(db, channelID, channelSecret, callbackURL, liffChannelID),
 		db:              db,
 		jwtSecret:       jwtSecret,
 		accessTokenExp:  accessTokenExp,

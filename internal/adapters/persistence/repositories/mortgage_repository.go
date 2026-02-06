@@ -31,8 +31,8 @@ func (r *MortgageRepository) GetByID(ctx context.Context, id uint) (*models.Mort
 		Preload("Creator").
 		Preload("LoanType").
 		Preload("CurrentStep").
-		Preload("CurrentAppt").
-		Preload("CurrentDoc").
+		Preload("CurrentAppt"). // FK to loan_appts master table
+		Preload("CurrentDoc").  // FK to loan_docs master table
 		Preload("Approver").
 		First(&mortgage, id).Error
 	return &mortgage, err
@@ -114,7 +114,25 @@ func (r *MortgageRepository) ListByStep(ctx context.Context, stepID uint, offset
 
 // Update updates a mortgage
 func (r *MortgageRepository) Update(ctx context.Context, mortgage *models.Mortgage) error {
-	return r.db.WithContext(ctx).Save(mortgage).Error
+	return r.db.WithContext(ctx).Model(&models.Mortgage{}).Where("id = ?", mortgage.ID).Updates(map[string]interface{}{
+		"contract_no":       mortgage.ContractNo,
+		"officer_id":        mortgage.OfficerID,
+		"amount":            mortgage.Amount,
+		"collateral":        mortgage.Collateral,
+		"purpose":           mortgage.Purpose,
+		"guarantor_memb_no": mortgage.GuarantorMembNo,
+		"loan_type_id":      mortgage.LoanTypeID,
+		"interest_rate":     mortgage.InterestRate,
+		"current_step_id":   mortgage.CurrentStepID,
+		"current_appt_id":   mortgage.CurrentApptID,
+		"current_doc_id":    mortgage.CurrentDocID,
+		"appt_date":         mortgage.ApptDate,
+		"appt_time":         mortgage.ApptTime,
+		"appt_location":     mortgage.ApptLocation,
+		"approved_by":       mortgage.ApprovedBy,
+		"approved_at":       mortgage.ApprovedAt,
+		"remark":            mortgage.Remark,
+	}).Error
 }
 
 // Delete soft deletes a mortgage

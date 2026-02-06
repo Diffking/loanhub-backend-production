@@ -67,8 +67,23 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// LINE Handler
 	lineHandler := handlers.NewLINEHandler(db)
 
-	// LIFF Handler (for LINE Login via LIFF SDK)
-	liffHandler := handlers.NewLIFFHandler(db)
+	// ============================================================
+	// ✅ LIFF Handler v2 - รับ lineService + otpService
+	// ============================================================
+	lineService := lineHandler.GetLINEService()
+	otpService := services.NewOTPService(db)
+	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService)
+
+	// v2.2.2: Mobile Handler (Aggregated APIs)
+	mobileHandler := handlers.NewMobileHandler(
+		db,
+		mortgageRepo,
+		loanTypeRepo,
+		loanStepRepo,
+		loanDocRepo,
+		loanApptRepo,
+		transactionRepo,
+	)
 
 	// Health check & root routes
 	app.Get("/", healthHandler.Root)
@@ -80,6 +95,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler, masterHandler, dashboardHandler, lineHandler, liffHandler, cfg)
+
+	// API v2 group (Mobile-optimized)
+	apiV2 := app.Group("/api/v2")
+	setupAPIV2Routes(apiV2, mobileHandler, cfg)
 }
 
 // setupAPIV1Routes configures API v1 routes
@@ -165,6 +184,28 @@ func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *co
 
 	// PROTECTED - Get LINE status
 	router.Get("/status", middleware.AuthMiddleware(cfg), handler.GetLINEStatus)
+}
+
+// ============================================================
+// ✅ LIFF Routes - เพิ่ม OTP + Device endpoints
+// ============================================================
+func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
+	// Check if LINE user exists in system
+	router.Post("/check", handler.CheckLineUser)
+
+	// OTP routes
+	router.Post("/otp/request", handler.RequestOTP) // ✅ ขอ OTP
+	router.Post("/otp/verify", handler.VerifyOTP)    // ✅ ยืนยัน OTP
+
+	// Register - Link LINE with Member Number (ต้อง verify OTP ก่อน)
+	router.Post("/register", handler.Register)
+
+	// Login with LIFF (ตรวจ device + network)
+	router.Post("/login", handler.LoginWithLiff)
+
+	// Device management
+	router.Post("/device/change", handler.ChangeDevice) // ✅ ขอเปลี่ยนเครื่อง
+	router.Post("/device/info", handler.GetDeviceInfo)   // ✅ ดูข้อมูล device
 }
 
 // setupUserRoutes configures user management routes (Admin only)
@@ -257,14 +298,18 @@ func setupDashboardRoutes(router fiber.Router, handler *handlers.DashboardHandle
 	router.Get("/admin", middleware.AdminOnly(), handler.GetAdminDashboard)
 }
 
-// setupLIFFRoutes configures LIFF authentication routes (PUBLIC - no auth required)
-func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
-	// Check if LINE user exists in system
-	router.Post("/check", handler.CheckLineUser)
+// setupAPIV2Routes configures API v2 routes (Mobile-optimized)
+func setupAPIV2Routes(router fiber.Router, mobileHandler *handlers.MobileHandler, cfg *config.Config) {
+	// Mobile routes group (requires authentication)
+	mobileRoutes := router.Group("/mobile")
+	mobileRoutes.Use(middleware.AuthMiddleware(cfg))
 
-	// Register - Link LINE with Member Number
-	router.Post("/register", handler.Register)
+	// GET /api/v2/mobile/dashboard
+	mobileRoutes.Get("/dashboard", mobileHandler.GetDashboard)
 
-	// Login with LIFF
-	router.Post("/login", handler.LoginWithLiff)
+	// GET /api/v2/mobile/my-loans
+	mobileRoutes.Get("/my-loans", mobileHandler.GetMyLoans)
+
+	// GET /api/v2/mobile/master
+	mobileRoutes.Get("/master", mobileHandler.GetMasterData)
 }

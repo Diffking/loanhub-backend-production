@@ -411,7 +411,7 @@ func (s *MortgageService) CreateAppt(ctx context.Context, mortgageID uint, input
 	mortgage.ApptDate = &apptDate
 	mortgage.ApptTime = input.ApptTime
 	mortgage.ApptLocation = location
-	mortgage.ApptStatus = models.ApptStatusPending
+	// ลบ ApptStatus ออกแล้ว - ระบบนี้แค่ติดตามเฉยๆ
 
 	if err := s.mortgageRepo.Update(ctx, mortgage); err != nil {
 		return nil, err
@@ -444,10 +444,8 @@ func (s *MortgageService) CompleteAppt(ctx context.Context, mortgageID uint, app
 		return ErrApptNotFound
 	}
 
-	mortgage.ApptStatus = models.ApptStatusCompleted
-	if err := s.mortgageRepo.Update(ctx, mortgage); err != nil {
-		return err
-	}
+	// ลบ ApptStatus ออกแล้ว - แค่บันทึก transaction เป็น history
+	// mortgage.ApptStatus = models.ApptStatusCompleted
 
 	tx := &models.Transaction{
 		MortgageID:      mortgageID,

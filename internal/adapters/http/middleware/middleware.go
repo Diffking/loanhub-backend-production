@@ -6,6 +6,7 @@ import (
 	"spsc-loaneasy/internal/config"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
@@ -17,6 +18,11 @@ import (
 func Setup(app *fiber.App, cfg *config.Config) {
 	// Recover middleware - catches panics
 	app.Use(recover.New())
+
+	// Gzip Compression middleware - ลด response size 60-70%
+	app.Use(compress.New(compress.Config{
+		Level: compress.LevelBestSpeed, // เร็วที่สุด เหมาะกับ API
+	}))
 
 	// Security Headers middleware (Helmet)
 	app.Use(helmet.New(helmet.Config{

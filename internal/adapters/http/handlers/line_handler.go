@@ -230,7 +230,7 @@ func (h *LINEHandler) LINECallback(c *fiber.Ctx) error {
 	// Save refresh token to database
 	expiresAt := time.Now().AddDate(0, 0, h.refreshTokenExp)
 	h.db.Exec(`
-		INSERT INTO refresh_tokens (user_id, token, expires_at, created_at, updated_at)
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at, updated_at)
 		VALUES (?, ?, ?, NOW(), NOW())
 	`, user.ID, refreshToken, expiresAt)
 
@@ -338,6 +338,12 @@ func (h *LINEHandler) GetLINEStatus(c *fiber.Ctx) error {
 		"display_name": result.LineDisplayName,
 		"linked_at":    result.LineLinkedAt,
 	})
+}
+
+// GetLINEService returns the LINE service instance
+// ใช้ใน routes.go เพื่อส่งต่อให้ LIFFHandler
+func (h *LINEHandler) GetLINEService() *services.LINEService {
+	return h.lineService
 }
 
 func generateRandomState() (string, error) {

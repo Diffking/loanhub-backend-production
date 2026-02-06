@@ -50,22 +50,22 @@ type AdminDashboardData struct {
 
 // MortgageSummary represents mortgage summary
 type MortgageSummary struct {
-	ID         uint      `json:"id"`
-	MembNo     string    `json:"memb_no"`
-	Amount     float64   `json:"amount"`
-	LoanType   string    `json:"loan_type"`
-	Status     string    `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        uint      `json:"id"`
+	MembNo    string    `json:"memb_no"`
+	Amount    float64   `json:"amount"`
+	LoanType  string    `json:"loan_type"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // OfficerStats represents officer statistics
 type OfficerStats struct {
-	OfficerID   uint    `json:"officer_id"`
-	Username    string  `json:"username"`
-	TotalCases  int64   `json:"total_cases"`
-	Approved    int64   `json:"approved"`
-	Rejected    int64   `json:"rejected"`
-	Pending     int64   `json:"pending"`
+	OfficerID  uint   `json:"officer_id"`
+	Username   string `json:"username"`
+	TotalCases int64  `json:"total_cases"`
+	Approved   int64  `json:"approved"`
+	Rejected   int64  `json:"rejected"`
+	Pending    int64  `json:"pending"`
 }
 
 // GetAdminDashboard returns admin dashboard data
@@ -199,10 +199,10 @@ func (s *DashboardService) GetAdminDashboard(ctx context.Context) (*AdminDashboa
 // OfficerDashboardData represents officer dashboard data
 type OfficerDashboardData struct {
 	// My Statistics
-	TotalAssigned     int64   `json:"total_assigned"`
-	PendingCases      int64   `json:"pending_cases"`
-	ApprovedCases     int64   `json:"approved_cases"`
-	RejectedCases     int64   `json:"rejected_cases"`
+	TotalAssigned      int64   `json:"total_assigned"`
+	PendingCases       int64   `json:"pending_cases"`
+	ApprovedCases      int64   `json:"approved_cases"`
+	RejectedCases      int64   `json:"rejected_cases"`
 	TotalAmountHandled float64 `json:"total_amount_handled"`
 
 	// Today's Tasks
@@ -220,25 +220,24 @@ type OfficerDashboardData struct {
 
 // AppointmentInfo represents appointment information
 type AppointmentInfo struct {
-	ID           uint      `json:"id"`
-	MortgageID   uint      `json:"mortgage_id"`
-	MembNo       string    `json:"memb_no"`
-	ApptType     string    `json:"appt_type"`
-	ApptDate     string    `json:"appt_date"`
-	ApptTime     string    `json:"appt_time"`
-	Location     string    `json:"location"`
-	IsCompleted  bool      `json:"is_completed"`
+	ID         uint   `json:"id"`
+	MortgageID uint   `json:"mortgage_id"`
+	MembNo     string `json:"memb_no"`
+	ApptType   string `json:"appt_type"`
+	ApptDate   string `json:"appt_date"`
+	ApptTime   string `json:"appt_time"`
+	Location   string `json:"location"`
 }
 
 // TransactionInfo represents transaction information
 type TransactionInfo struct {
-	ID          uint      `json:"id"`
-	MortgageID  uint      `json:"mortgage_id"`
-	Action      string    `json:"action"`
-	OldValue    string    `json:"old_value"`
-	NewValue    string    `json:"new_value"`
-	Remark      string    `json:"remark"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         uint      `json:"id"`
+	MortgageID uint      `json:"mortgage_id"`
+	Action     string    `json:"action"`
+	OldValue   string    `json:"old_value"`
+	NewValue   string    `json:"new_value"`
+	Remark     string    `json:"remark"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // GetOfficerDashboard returns officer dashboard data
@@ -270,37 +269,42 @@ func (s *DashboardService) GetOfficerDashboard(ctx context.Context, officerID ui
 		Select("COALESCE(SUM(amount), 0)").
 		Scan(&data.TotalAmountHandled)
 
-	// Today's appointments
+	// Today's appointments - ใช้ mortgages.appt_date แทน loan_appt_currents
 	today := time.Now().Format("2006-01-02")
 	var todayAppts []struct {
-		ID          uint
-		MortgageID  uint
-		MembNo      string
-		ApptType    string
-		ApptDate    string
-		ApptTime    string
-		Location    string
-		IsCompleted bool
+		ID         uint
+		MortgageID uint
+		MembNo     string
+		ApptType   string
+		ApptDate   string
+		ApptTime   string
+		Location   string
 	}
-	s.db.WithContext(ctx).Table("loan_appt_currents").
-		Select("loan_appt_currents.id, loan_appt_currents.mortgage_id, mortgages.memb_no, loan_appts.name as appt_type, DATE_FORMAT(loan_appt_currents.appt_date, '%Y-%m-%d') as appt_date, loan_appt_currents.appt_time, loan_appt_currents.location, (loan_appt_currents.status = 'COMPLETED') as is_completed").
-		Joins("JOIN mortgages ON loan_appt_currents.mortgage_id = mortgages.id").
-		Joins("LEFT JOIN loan_appts ON loan_appt_currents.loan_appt_id = loan_appts.id").
-		Where("mortgages.officer_id = ? AND DATE(loan_appt_currents.appt_date) = ?", officerID, today).
-		Order("loan_appt_currents.appt_time ASC").
+	s.db.WithContext(ctx).Table("mortgages").
+		Select(`
+			mortgages.id,
+			mortgages.id as mortgage_id,
+			mortgages.memb_no,
+			COALESCE(loan_appts.name, 'นัดหมาย') as appt_type,
+			DATE_FORMAT(mortgages.appt_date, '%Y-%m-%d') as appt_date,
+			mortgages.appt_time,
+			mortgages.appt_location as location
+		`).
+		Joins("LEFT JOIN loan_appts ON mortgages.current_appt_id = loan_appts.id").
+		Where("mortgages.officer_id = ? AND DATE(mortgages.appt_date) = ? AND mortgages.deleted_at IS NULL", officerID, today).
+		Order("mortgages.appt_time ASC").
 		Scan(&todayAppts)
 
 	data.TodayAppointments = make([]AppointmentInfo, len(todayAppts))
 	for i, a := range todayAppts {
 		data.TodayAppointments[i] = AppointmentInfo{
-			ID:          a.ID,
-			MortgageID:  a.MortgageID,
-			MembNo:      a.MembNo,
-			ApptType:    a.ApptType,
-			ApptDate:    a.ApptDate,
-			ApptTime:    a.ApptTime,
-			Location:    a.Location,
-			IsCompleted: a.IsCompleted,
+			ID:         a.ID,
+			MortgageID: a.MortgageID,
+			MembNo:     a.MembNo,
+			ApptType:   a.ApptType,
+			ApptDate:   a.ApptDate,
+			ApptTime:   a.ApptTime,
+			Location:   a.Location,
 		}
 	}
 
@@ -334,38 +338,44 @@ func (s *DashboardService) GetOfficerDashboard(ctx context.Context, officerID ui
 		}
 	}
 
-	// This week appointments
+	// This week appointments - ใช้ mortgages.appt_date แทน loan_appt_currents
 	startOfWeek := time.Now().AddDate(0, 0, -int(time.Now().Weekday()))
 	endOfWeek := startOfWeek.AddDate(0, 0, 7)
 	var weekAppts []struct {
-		ID          uint
-		MortgageID  uint
-		MembNo      string
-		ApptType    string
-		ApptDate    string
-		ApptTime    string
-		Location    string
-		IsCompleted bool
+		ID         uint
+		MortgageID uint
+		MembNo     string
+		ApptType   string
+		ApptDate   string
+		ApptTime   string
+		Location   string
 	}
-	s.db.WithContext(ctx).Table("loan_appt_currents").
-		Select("loan_appt_currents.id, loan_appt_currents.mortgage_id, mortgages.memb_no, loan_appts.name as appt_type, DATE_FORMAT(loan_appt_currents.appt_date, '%Y-%m-%d') as appt_date, loan_appt_currents.appt_time, loan_appt_currents.location, (loan_appt_currents.status = 'COMPLETED') as is_completed").
-		Joins("JOIN mortgages ON loan_appt_currents.mortgage_id = mortgages.id").
-		Joins("LEFT JOIN loan_appts ON loan_appt_currents.loan_appt_id = loan_appts.id").
-		Where("mortgages.officer_id = ? AND loan_appt_currents.appt_date >= ? AND loan_appt_currents.appt_date < ? AND loan_appt_currents.status = ?", officerID, startOfWeek.Format("2006-01-02"), endOfWeek.Format("2006-01-02"), "PENDING").
-		Order("loan_appt_currents.appt_date ASC, loan_appt_currents.appt_time ASC").
+	s.db.WithContext(ctx).Table("mortgages").
+		Select(`
+			mortgages.id,
+			mortgages.id as mortgage_id,
+			mortgages.memb_no,
+			COALESCE(loan_appts.name, 'นัดหมาย') as appt_type,
+			DATE_FORMAT(mortgages.appt_date, '%Y-%m-%d') as appt_date,
+			mortgages.appt_time,
+			mortgages.appt_location as location
+		`).
+		Joins("LEFT JOIN loan_appts ON mortgages.current_appt_id = loan_appts.id").
+		Where("mortgages.officer_id = ? AND mortgages.appt_date >= ? AND mortgages.appt_date < ? AND mortgages.deleted_at IS NULL",
+			officerID, startOfWeek.Format("2006-01-02"), endOfWeek.Format("2006-01-02")).
+		Order("mortgages.appt_date ASC, mortgages.appt_time ASC").
 		Scan(&weekAppts)
 
 	data.WeekAppointments = make([]AppointmentInfo, len(weekAppts))
 	for i, a := range weekAppts {
 		data.WeekAppointments[i] = AppointmentInfo{
-			ID:          a.ID,
-			MortgageID:  a.MortgageID,
-			MembNo:      a.MembNo,
-			ApptType:    a.ApptType,
-			ApptDate:    a.ApptDate,
-			ApptTime:    a.ApptTime,
-			Location:    a.Location,
-			IsCompleted: a.IsCompleted,
+			ID:         a.ID,
+			MortgageID: a.MortgageID,
+			MembNo:     a.MembNo,
+			ApptType:   a.ApptType,
+			ApptDate:   a.ApptDate,
+			ApptTime:   a.ApptTime,
+			Location:   a.Location,
 		}
 	}
 
@@ -426,15 +436,15 @@ type UserDashboardData struct {
 
 // UserMortgageInfo represents user mortgage information
 type UserMortgageInfo struct {
-	ID           uint      `json:"id"`
-	ContractNo   string    `json:"contract_no"`
-	Amount       float64   `json:"amount"`
-	LoanType     string    `json:"loan_type"`
-	Status       string    `json:"status"`
-	StatusColor  string    `json:"status_color"`
-	OfficerName  string    `json:"officer_name"`
-	CreatedAt    time.Time `json:"created_at"`
-	ApprovedAt   *time.Time `json:"approved_at"`
+	ID          uint       `json:"id"`
+	ContractNo  string     `json:"contract_no"`
+	Amount      float64    `json:"amount"`
+	LoanType    string     `json:"loan_type"`
+	Status      string     `json:"status"`
+	StatusColor string     `json:"status_color"`
+	OfficerName string     `json:"officer_name"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ApprovedAt  *time.Time `json:"approved_at"`
 }
 
 // GetUserDashboard returns user dashboard data
@@ -503,37 +513,43 @@ func (s *DashboardService) GetUserDashboard(ctx context.Context, membNo string) 
 		}
 	}
 
-	// Upcoming appointments
+	// Upcoming appointments - ใช้ mortgages.appt_date แทน loan_appt_currents
 	var upcomingAppts []struct {
-		ID          uint
-		MortgageID  uint
-		MembNo      string
-		ApptType    string
-		ApptDate    string
-		ApptTime    string
-		Location    string
-		IsCompleted bool
+		ID         uint
+		MortgageID uint
+		MembNo     string
+		ApptType   string
+		ApptDate   string
+		ApptTime   string
+		Location   string
 	}
-	s.db.WithContext(ctx).Table("loan_appt_currents").
-		Select("loan_appt_currents.id, loan_appt_currents.mortgage_id, mortgages.memb_no, loan_appts.name as appt_type, DATE_FORMAT(loan_appt_currents.appt_date, '%Y-%m-%d') as appt_date, loan_appt_currents.appt_time, loan_appt_currents.location, (loan_appt_currents.status = 'COMPLETED') as is_completed").
-		Joins("JOIN mortgages ON loan_appt_currents.mortgage_id = mortgages.id").
-		Joins("LEFT JOIN loan_appts ON loan_appt_currents.loan_appt_id = loan_appts.id").
-		Where("mortgages.memb_no = ? AND loan_appt_currents.appt_date >= ? AND loan_appt_currents.status = ?", membNo, time.Now().Format("2006-01-02"), "PENDING").
-		Order("loan_appt_currents.appt_date ASC, loan_appt_currents.appt_time ASC").
+	s.db.WithContext(ctx).Table("mortgages").
+		Select(`
+			mortgages.id,
+			mortgages.id as mortgage_id,
+			mortgages.memb_no,
+			COALESCE(loan_appts.name, 'นัดหมาย') as appt_type,
+			DATE_FORMAT(mortgages.appt_date, '%Y-%m-%d') as appt_date,
+			mortgages.appt_time,
+			mortgages.appt_location as location
+		`).
+		Joins("LEFT JOIN loan_appts ON mortgages.current_appt_id = loan_appts.id").
+		Where("mortgages.memb_no = ? AND mortgages.appt_date >= ? AND mortgages.deleted_at IS NULL",
+			membNo, time.Now().Format("2006-01-02")).
+		Order("mortgages.appt_date ASC, mortgages.appt_time ASC").
 		Limit(5).
 		Scan(&upcomingAppts)
 
 	data.UpcomingAppointments = make([]AppointmentInfo, len(upcomingAppts))
 	for i, a := range upcomingAppts {
 		data.UpcomingAppointments[i] = AppointmentInfo{
-			ID:          a.ID,
-			MortgageID:  a.MortgageID,
-			MembNo:      a.MembNo,
-			ApptType:    a.ApptType,
-			ApptDate:    a.ApptDate,
-			ApptTime:    a.ApptTime,
-			Location:    a.Location,
-			IsCompleted: a.IsCompleted,
+			ID:         a.ID,
+			MortgageID: a.MortgageID,
+			MembNo:     a.MembNo,
+			ApptType:   a.ApptType,
+			ApptDate:   a.ApptDate,
+			ApptTime:   a.ApptTime,
+			Location:   a.Location,
 		}
 	}
 

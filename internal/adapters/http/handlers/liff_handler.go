@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"fmt"
+	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"spsc-loaneasy/internal/core/services"
 	"spsc-loaneasy/internal/pkg/jwt"
 	"spsc-loaneasy/internal/pkg/response"
 
@@ -13,14 +17,24 @@ import (
 	"gorm.io/gorm"
 )
 
+// ============================================================
+// LIFF Handler v2 - เพิ่ม Security Features
+// ✅ LINE Token Verification (ป้องกันปลอม LINE User ID)
+// ✅ Device ID Binding (ผูก 1 คน = 1 เครื่อง)
+// ✅ Network Type Check (บังคับ Cellular)
+// ✅ OTP Phone Verification (ยืนยันเบอร์โทร)
+// ============================================================
+
 type LIFFHandler struct {
 	db              *gorm.DB
+	lineService     *services.LINEService
+	otpService      *services.OTPService
 	jwtSecret       string
 	accessTokenExp  int
 	refreshTokenExp int
 }
 
-func NewLIFFHandler(db *gorm.DB) *LIFFHandler {
+func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService) *LIFFHandler {
 	jwtSecret := os.Getenv("PROD_JWT_SECRET")
 	accessTokenExp := 1440
 	if exp := os.Getenv("ACCESS_TOKEN_EXPIRY"); exp != "" {
@@ -36,21 +50,69 @@ func NewLIFFHandler(db *gorm.DB) *LIFFHandler {
 	}
 	return &LIFFHandler{
 		db:              db,
+		lineService:     lineService,
+		otpService:      otpService,
 		jwtSecret:       jwtSecret,
 		accessTokenExp:  accessTokenExp,
 		refreshTokenExp: refreshTokenExp,
 	}
 }
 
+// ============================================================
+// Request/Response Structs
+// ============================================================
+
 type CheckLineUserRequest struct {
-	LineUserID string `json:"line_user_id" validate:"required"`
+	LineUserID      string `json:"line_user_id" validate:"required"`
+	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม: ต้องส่ง LINE access token มาด้วย
 }
 
-// @Summary Check LINE User
+type LIFFRegisterRequest struct {
+	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม
+	LineDisplayName string `json:"line_display_name"`
+	LinePictureURL  string `json:"line_picture_url"`
+	MembNo          string `json:"memb_no" validate:"required"`
+	Phone           string `json:"phone" validate:"required"`    // ✅ เพิ่ม: เบอร์โทร
+	OTPCode         string `json:"otp_code" validate:"required"` // ✅ เพิ่ม: OTP ที่ได้รับ
+	DeviceID        string `json:"device_id" validate:"required"` // ✅ เพิ่ม: Device ID
+	NetworkType     string `json:"network_type"`                  // ✅ เพิ่ม: wifi / cellular
+}
+
+type LIFFLoginRequest struct {
+	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม
+	LineDisplayName string `json:"line_display_name"`
+	LinePictureURL  string `json:"line_picture_url"`
+	DeviceID        string `json:"device_id" validate:"required"` // ✅ เพิ่ม
+	NetworkType     string `json:"network_type"`                  // ✅ เพิ่ม
+}
+
+// OTP Request
+type RequestOTPRequest struct {
+	LineAccessToken string `json:"line_access_token" validate:"required"`
+	MembNo          string `json:"memb_no" validate:"required"`
+	Phone           string `json:"phone" validate:"required"`
+}
+
+type VerifyOTPRequest struct {
+	LineAccessToken string `json:"line_access_token" validate:"required"`
+	OTPCode         string `json:"otp_code" validate:"required"`
+}
+
+// Device Change Request (ขอเปลี่ยนเครื่อง)
+type DeviceChangeRequest struct {
+	LineAccessToken string `json:"line_access_token" validate:"required"`
+	NewDeviceID     string `json:"new_device_id" validate:"required"`
+	OTPCode         string `json:"otp_code" validate:"required"`
+}
+
+// ============================================================
+// 1. Check LINE User - ตรวจว่า LINE user มีในระบบหรือยัง
+// ============================================================
+// @Summary Check LINE User (Secured)
 // @Tags LIFF
 // @Accept json
 // @Produce json
-// @Param request body CheckLineUserRequest true "LINE User ID"
+// @Param request body CheckLineUserRequest true "LINE Access Token"
 // @Success 200 {object} response.Response
 // @Router /auth/liff/check [post]
 func (h *LIFFHandler) CheckLineUser(c *fiber.Ctx) error {
@@ -58,25 +120,159 @@ func (h *LIFFHandler) CheckLineUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
 	}
-	if req.LineUserID == "" {
-		return response.BadRequest(c, "กรุณาระบุ LINE User ID")
+
+	if req.LineAccessToken == "" {
+		return response.BadRequest(c, "กรุณาระบุ LINE Access Token")
 	}
+
+	// ✅ Verify LINE Access Token แล้วดึง profile จาก LINE โดยตรง
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		log.Printf("LINE token verify failed: %v", err)
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง กรุณา login LINE ใหม่")
+	}
+
+	// ใช้ LINE User ID จาก profile (ไม่ใช่จาก client)
+	lineUserID := profile.UserID
+
 	var count int64
-	h.db.Raw("SELECT COUNT(*) FROM users WHERE line_user_id = ? AND deleted_at IS NULL", req.LineUserID).Scan(&count)
+	h.db.Raw("SELECT COUNT(*) FROM users WHERE line_user_id = ? AND deleted_at IS NULL", lineUserID).Scan(&count)
+
+	// ถ้ามีในระบบ ส่ง device_id ที่ผูกไว้กลับไปด้วย
+	var registeredDeviceID *string
+	if count > 0 {
+		h.db.Raw("SELECT device_id FROM users WHERE line_user_id = ? AND deleted_at IS NULL", lineUserID).Scan(&registeredDeviceID)
+	}
+
 	return response.Success(c, "ตรวจสอบสำเร็จ", fiber.Map{
-		"exists":       count > 0,
-		"line_user_id": req.LineUserID,
+		"exists":        count > 0,
+		"line_user_id":  lineUserID,
+		"display_name":  profile.DisplayName,
+		"has_device":    registeredDeviceID != nil && *registeredDeviceID != "",
 	})
 }
 
-type LIFFRegisterRequest struct {
-	LineUserID      string `json:"line_user_id" validate:"required"`
-	LineDisplayName string `json:"line_display_name"`
-	LinePictureURL  string `json:"line_picture_url"`
-	MembNo          string `json:"memb_no" validate:"required"`
+// ============================================================
+// 2. Request OTP - ขอ OTP ส่งไปที่เบอร์โทร
+// ============================================================
+// @Summary Request OTP
+// @Tags LIFF
+// @Accept json
+// @Produce json
+// @Param request body RequestOTPRequest true "OTP Request"
+// @Success 200 {object} response.Response
+// @Router /auth/liff/otp/request [post]
+func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
+	var req RequestOTPRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
+	}
+
+	if req.LineAccessToken == "" || req.MembNo == "" || req.Phone == "" {
+		return response.BadRequest(c, "กรุณาระบุข้อมูลให้ครบ")
+	}
+
+	// ✅ Verify LINE Token
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง")
+	}
+
+	// Pad member number
+	membNo := req.MembNo
+	for len(membNo) < 5 {
+		membNo = "0" + membNo
+	}
+
+	// ตรวจเลขสมาชิกในระบบ flommast
+	var mastMembNo, mastMobile string
+	row := h.db.Raw("SELECT MAST_MEMB_NO, MAST_MOBILE FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
+	err = row.Scan(&mastMembNo, &mastMobile)
+	if err != nil || mastMembNo == "" {
+		return response.BadRequest(c, "ไม่พบเลขสมาชิกนี้ในระบบ")
+	}
+
+	// ✅ ตรวจว่าเบอร์โทรตรงกับในระบบ
+	cleanPhone := cleanPhoneNumber(req.Phone)
+	cleanMastMobile := cleanPhoneNumber(mastMobile)
+	if cleanPhone != cleanMastMobile {
+		return response.BadRequest(c, "เบอร์โทรไม่ตรงกับข้อมูลสมาชิก")
+	}
+
+	// Generate OTP
+	otpCode, err := h.otpService.GenerateOTP(profile.UserID, cleanPhone)
+	if err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	// ============================================================
+	// 📱 ส่ง OTP ผ่าน SMS
+	// TODO: เชื่อมกับ SMS Provider จริง (เช่น ThaiBulkSMS, Twilio, etc.)
+	// ตอนนี้ส่งผ่าน LINE push message แทน (สำหรับ dev/test)
+	// ============================================================
+	smsMessage := fmt.Sprintf("รหัส OTP ของคุณคือ: %s (หมดอายุใน 5 นาที) - สหกรณ์ SPSC", otpCode)
+
+	// ส่งผ่าน LINE message (ชั่วคราว - ควรเปลี่ยนเป็น SMS จริง)
+	channelAccessToken := os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
+	if channelAccessToken != "" {
+		go func() {
+			if err := h.lineService.SendPushMessage(profile.UserID, smsMessage, channelAccessToken); err != nil {
+				log.Printf("Failed to send OTP via LINE: %v", err)
+			}
+		}()
+	}
+
+	// ⚠️ Production: ให้ใช้ SMS API จริง
+	// sendSMS(cleanPhone, smsMessage)
+
+	log.Printf("📱 OTP Generated for member %s, phone %s: %s", membNo, cleanPhone, otpCode)
+
+	return response.Success(c, "ส่ง OTP สำเร็จ", fiber.Map{
+		"phone_masked": maskPhone(cleanPhone),
+		"expires_in":   300, // 5 minutes
+	})
 }
 
-// @Summary Register with LIFF
+// ============================================================
+// 3. Verify OTP
+// ============================================================
+// @Summary Verify OTP
+// @Tags LIFF
+// @Accept json
+// @Produce json
+// @Param request body VerifyOTPRequest true "OTP Verification"
+// @Success 200 {object} response.Response
+// @Router /auth/liff/otp/verify [post]
+func (h *LIFFHandler) VerifyOTP(c *fiber.Ctx) error {
+	var req VerifyOTPRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
+	}
+
+	if req.LineAccessToken == "" || req.OTPCode == "" {
+		return response.BadRequest(c, "กรุณาระบุข้อมูลให้ครบ")
+	}
+
+	// Verify LINE Token
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง")
+	}
+
+	// Verify OTP
+	if err := h.otpService.VerifyOTP(profile.UserID, req.OTPCode); err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	return response.Success(c, "ยืนยัน OTP สำเร็จ", fiber.Map{
+		"verified": true,
+	})
+}
+
+// ============================================================
+// 4. Register with LIFF - ลงทะเบียน (ต้อง verify OTP ก่อน)
+// ============================================================
+// @Summary Register with LIFF (Secured)
 // @Tags LIFF
 // @Accept json
 // @Produce json
@@ -88,36 +284,109 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
 	}
-	if req.LineUserID == "" || req.MembNo == "" {
+
+	// Validate required fields
+	if req.LineAccessToken == "" || req.MembNo == "" {
 		return response.BadRequest(c, "กรุณาระบุข้อมูลให้ครบ")
 	}
+	if req.DeviceID == "" {
+		return response.BadRequest(c, "กรุณาระบุ Device ID")
+	}
+	if req.OTPCode == "" {
+		return response.BadRequest(c, "กรุณาระบุรหัส OTP")
+	}
+
+	// ✅ ตรวจ Network Type - บังคับ Cellular
+	if err := h.validateNetworkType(req.NetworkType); err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	// ✅ Verify LINE Token แล้วดึง profile
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง กรุณา login LINE ใหม่")
+	}
+
+	lineUserID := profile.UserID
+
+	// ✅ Verify OTP (ต้อง verify ก่อนหน้านี้แล้ว หรือ verify ตอน register เลย)
+	if err := h.otpService.VerifyOTP(lineUserID, req.OTPCode); err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	// Pad member number
 	membNo := req.MembNo
 	for len(membNo) < 5 {
 		membNo = "0" + membNo
 	}
+
+	// ตรวจว่า LINE นี้ลงทะเบียนแล้วหรือยัง
 	var existingCount int64
-	h.db.Raw("SELECT COUNT(*) FROM users WHERE line_user_id = ? AND deleted_at IS NULL", req.LineUserID).Scan(&existingCount)
+	h.db.Raw("SELECT COUNT(*) FROM users WHERE line_user_id = ? AND deleted_at IS NULL", lineUserID).Scan(&existingCount)
 	if existingCount > 0 {
 		return response.BadRequest(c, "LINE นี้ลงทะเบียนแล้ว")
 	}
+
+	// ✅ ตรวจว่า Device ID นี้ผูกกับคนอื่นหรือยัง
+	var deviceCount int64
+	h.db.Raw("SELECT COUNT(*) FROM users WHERE device_id = ? AND deleted_at IS NULL", req.DeviceID).Scan(&deviceCount)
+	if deviceCount > 0 {
+		return response.BadRequest(c, "เครื่องนี้ลงทะเบียนกับบัญชีอื่นแล้ว กรุณาติดต่อสหกรณ์")
+	}
+
+	// ตรวจเลขสมาชิกใน flommast
 	var mastMembNo, fullName, deptName, stsTypeDesc, mastMobile string
 	row := h.db.Raw("SELECT MAST_MEMB_NO, Full_Name, DEPT_NAME, STS_TYPE_DESC, MAST_MOBILE FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
-	err := row.Scan(&mastMembNo, &fullName, &deptName, &stsTypeDesc, &mastMobile)
+	err = row.Scan(&mastMembNo, &fullName, &deptName, &stsTypeDesc, &mastMobile)
 	if err != nil || mastMembNo == "" {
 		return response.BadRequest(c, "ไม่พบเลขสมาชิกนี้ในระบบ")
 	}
+
+	// Get verified phone from OTP
+	verifiedPhone := h.otpService.GetVerifiedPhone(lineUserID)
+	if verifiedPhone == "" {
+		verifiedPhone = cleanPhoneNumber(mastMobile)
+	}
+
+	// ตรวจว่ามี user ที่ใช้ memb_no นี้อยู่แล้วหรือไม่
 	var userCount int64
 	h.db.Raw("SELECT COUNT(*) FROM users WHERE memb_no = ? AND deleted_at IS NULL", membNo).Scan(&userCount)
 	if userCount > 0 {
-		h.db.Exec("UPDATE users SET line_user_id = ?, line_display_name = ?, line_picture_url = ?, line_linked_at = NOW(), updated_at = NOW() WHERE memb_no = ? AND deleted_at IS NULL", req.LineUserID, req.LineDisplayName, req.LinePictureURL, membNo)
+		// ผูก LINE + Device กับบัญชีที่มีอยู่
+		h.db.Exec(`UPDATE users SET 
+			line_user_id = ?, line_display_name = ?, line_picture_url = ?, 
+			line_linked_at = NOW(), device_id = ?, phone_verified = ?, 
+			network_type = ?, updated_at = NOW() 
+			WHERE memb_no = ? AND deleted_at IS NULL`,
+			lineUserID, req.LineDisplayName, req.LinePictureURL,
+			req.DeviceID, verifiedPhone,
+			req.NetworkType, membNo)
+
+		// Clear OTP
+		h.otpService.ClearOTP(lineUserID)
+
 		return response.Success(c, "ผูก LINE กับบัญชีสำเร็จ", fiber.Map{
 			"memb_no":   membNo,
 			"full_name": fullName,
 			"linked":    true,
 		})
 	}
+
+	// สร้าง user ใหม่ (พร้อม device_id + phone_verified)
 	username := "M" + membNo
-	h.db.Exec("INSERT INTO users (username, full_name, memb_no, role, dept_name, phone, line_user_id, line_display_name, line_picture_url, line_linked_at, email, password, created_at, updated_at) VALUES (?, ?, ?, 'USER', ?, ?, ?, ?, ?, NOW(), '', '', NOW(), NOW())", username, fullName, membNo, deptName, mastMobile, req.LineUserID, req.LineDisplayName, req.LinePictureURL)
+	h.db.Exec(`INSERT INTO users (
+		username, full_name, memb_no, role, dept_name, phone, 
+		line_user_id, line_display_name, line_picture_url, line_linked_at, 
+		device_id, phone_verified, network_type,
+		email, password, created_at, updated_at
+	) VALUES (?, ?, ?, 'USER', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, '', '', NOW(), NOW())`,
+		username, fullName, membNo, deptName, verifiedPhone,
+		lineUserID, req.LineDisplayName, req.LinePictureURL,
+		req.DeviceID, verifiedPhone, req.NetworkType)
+
+	// Clear OTP
+	h.otpService.ClearOTP(lineUserID)
+
 	return response.Success(c, "ลงทะเบียนสำเร็จ", fiber.Map{
 		"memb_no":   membNo,
 		"full_name": fullName,
@@ -125,13 +394,10 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	})
 }
 
-type LIFFLoginRequest struct {
-	LineUserID      string `json:"line_user_id" validate:"required"`
-	LineDisplayName string `json:"line_display_name"`
-	LinePictureURL  string `json:"line_picture_url"`
-}
-
-// @Summary Login with LIFF
+// ============================================================
+// 5. Login with LIFF - เข้าสู่ระบบ (ตรวจ Device + Network)
+// ============================================================
+// @Summary Login with LIFF (Secured)
 // @Tags LIFF
 // @Accept json
 // @Produce json
@@ -143,18 +409,62 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
 	}
-	if req.LineUserID == "" {
-		return response.BadRequest(c, "กรุณาระบุ LINE User ID")
+
+	if req.LineAccessToken == "" {
+		return response.BadRequest(c, "กรุณาระบุ LINE Access Token")
 	}
+	if req.DeviceID == "" {
+		return response.BadRequest(c, "กรุณาระบุ Device ID")
+	}
+
+	// ✅ ตรวจ Network Type - บังคับ Cellular
+	if err := h.validateNetworkType(req.NetworkType); err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	// ✅ Verify LINE Token แล้วดึง profile จาก LINE โดยตรง
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		log.Printf("LINE token verify failed: %v", err)
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง กรุณา login LINE ใหม่")
+	}
+
+	lineUserID := profile.UserID
+
+	// ค้นหา user จาก LINE User ID
 	var id uint
 	var username, fullName, role, membNo string
-	var email, deptName, phone, linePictureURL, lineDisplayName *string
-	row := h.db.Raw("SELECT id, username, full_name, email, role, memb_no, dept_name, phone, line_picture_url, line_display_name FROM users WHERE line_user_id = ? AND deleted_at IS NULL", req.LineUserID).Row()
-	err := row.Scan(&id, &username, &fullName, &email, &role, &membNo, &deptName, &phone, &linePictureURL, &lineDisplayName)
+	var email, deptName, phone, linePictureURL, lineDisplayName, deviceID *string
+	row := h.db.Raw(`SELECT id, username, full_name, email, role, memb_no, 
+		dept_name, phone, line_picture_url, line_display_name, device_id 
+		FROM users WHERE line_user_id = ? AND deleted_at IS NULL`, lineUserID).Row()
+	err = row.Scan(&id, &username, &fullName, &email, &role, &membNo,
+		&deptName, &phone, &linePictureURL, &lineDisplayName, &deviceID)
 	if err != nil || id == 0 {
 		return response.NotFound(c, "ไม่พบผู้ใช้ในระบบ กรุณาลงทะเบียน")
 	}
-	h.db.Exec("UPDATE users SET line_display_name = ?, line_picture_url = ?, updated_at = NOW() WHERE id = ?", req.LineDisplayName, req.LinePictureURL, id)
+
+	// ✅ ตรวจ Device ID - ต้องตรงกับที่ลงทะเบียนไว้
+	if deviceID != nil && *deviceID != "" && *deviceID != req.DeviceID {
+		log.Printf("⚠️ Device mismatch for user %d: registered=%s, current=%s", id, *deviceID, req.DeviceID)
+		return response.Forbidden(c, "เครื่องนี้ไม่ตรงกับที่ลงทะเบียนไว้ กรุณาติดต่อสหกรณ์เพื่อเปลี่ยนเครื่อง")
+	}
+
+	// อัพเดท LINE profile + network type + last login
+	h.db.Exec(`UPDATE users SET 
+		line_display_name = ?, line_picture_url = ?, 
+		network_type = ?, last_login = NOW(), updated_at = NOW() 
+		WHERE id = ?`,
+		req.LineDisplayName, req.LinePictureURL,
+		req.NetworkType, id)
+
+	// ถ้ายังไม่ได้ผูก device (user เก่าก่อนอัพเดท) ให้ผูกเลย
+	if deviceID == nil || *deviceID == "" {
+		h.db.Exec("UPDATE users SET device_id = ? WHERE id = ?", req.DeviceID, id)
+		log.Printf("📱 Auto-bound device %s to user %d", req.DeviceID, id)
+	}
+
+	// Generate JWT tokens
 	accessToken, err := jwt.GenerateAccessToken(id, membNo, username, role, h.jwtSecret, h.accessTokenExp)
 	if err != nil {
 		return response.InternalServerError(c, "ไม่สามารถสร้าง Token ได้")
@@ -164,14 +474,20 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 	if err != nil {
 		return response.InternalServerError(c, "ไม่สามารถสร้าง Token ได้")
 	}
+
+	// Save refresh token
 	expiresAt := time.Now().AddDate(0, 0, h.refreshTokenExp)
-	h.db.Exec("INSERT INTO refresh_tokens (user_id, token, expires_at, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())", id, refreshToken, expiresAt)
+	h.db.Exec("INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())",
+		id, refreshToken, expiresAt)
+
+	// Update display values from request
 	if req.LinePictureURL != "" {
 		linePictureURL = &req.LinePictureURL
 	}
 	if req.LineDisplayName != "" {
 		lineDisplayName = &req.LineDisplayName
 	}
+
 	return response.Success(c, "เข้าสู่ระบบสำเร็จ", fiber.Map{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
@@ -188,4 +504,166 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 			"line_display_name": lineDisplayName,
 		},
 	})
+}
+
+// ============================================================
+// 6. Change Device - ขอเปลี่ยนเครื่อง (ต้อง OTP)
+// ============================================================
+// @Summary Request Device Change
+// @Tags LIFF
+// @Accept json
+// @Produce json
+// @Param request body DeviceChangeRequest true "Device Change Request"
+// @Success 200 {object} response.Response
+// @Router /auth/liff/device/change [post]
+func (h *LIFFHandler) ChangeDevice(c *fiber.Ctx) error {
+	var req DeviceChangeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
+	}
+
+	if req.LineAccessToken == "" || req.NewDeviceID == "" || req.OTPCode == "" {
+		return response.BadRequest(c, "กรุณาระบุข้อมูลให้ครบ")
+	}
+
+	// Verify LINE Token
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง")
+	}
+
+	lineUserID := profile.UserID
+
+	// Verify OTP
+	if err := h.otpService.VerifyOTP(lineUserID, req.OTPCode); err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	// ตรวจว่า Device ID ใหม่ไม่ซ้ำกับคนอื่น
+	var deviceCount int64
+	h.db.Raw("SELECT COUNT(*) FROM users WHERE device_id = ? AND line_user_id != ? AND deleted_at IS NULL",
+		req.NewDeviceID, lineUserID).Scan(&deviceCount)
+	if deviceCount > 0 {
+		return response.BadRequest(c, "เครื่องนี้ลงทะเบียนกับบัญชีอื่นแล้ว")
+	}
+
+	// อัพเดท Device ID
+	result := h.db.Exec("UPDATE users SET device_id = ?, updated_at = NOW() WHERE line_user_id = ? AND deleted_at IS NULL",
+		req.NewDeviceID, lineUserID)
+	if result.RowsAffected == 0 {
+		return response.NotFound(c, "ไม่พบผู้ใช้ในระบบ")
+	}
+
+	// Clear OTP
+	h.otpService.ClearOTP(lineUserID)
+
+	log.Printf("📱 Device changed for LINE user %s: new device = %s", lineUserID, req.NewDeviceID)
+
+	return response.Success(c, "เปลี่ยนเครื่องสำเร็จ", fiber.Map{
+		"new_device_id": req.NewDeviceID,
+	})
+}
+
+// ============================================================
+// 7. Get Device Info - ดูข้อมูล device ที่ผูกไว้
+// ============================================================
+// @Summary Get Device Info
+// @Tags LIFF
+// @Produce json
+// @Success 200 {object} response.Response
+// @Router /auth/liff/device/info [post]
+func (h *LIFFHandler) GetDeviceInfo(c *fiber.Ctx) error {
+	var req struct {
+		LineAccessToken string `json:"line_access_token"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
+	}
+
+	// Verify LINE Token
+	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
+	if err != nil {
+		return response.Unauthorized(c, "LINE Token ไม่ถูกต้อง")
+	}
+
+	var result struct {
+		DeviceID      *string    `json:"device_id"`
+		PhoneVerified *string    `json:"phone_verified"`
+		LastLogin     *time.Time `json:"last_login"`
+	}
+	h.db.Raw("SELECT device_id, phone_verified, last_login FROM users WHERE line_user_id = ? AND deleted_at IS NULL",
+		profile.UserID).Scan(&result)
+
+	return response.Success(c, "ข้อมูลอุปกรณ์", fiber.Map{
+		"device_id":      result.DeviceID,
+		"phone_verified": result.PhoneVerified,
+		"last_login":     result.LastLogin,
+	})
+}
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+// validateNetworkType ตรวจว่าเป็น cellular หรือไม่
+func (h *LIFFHandler) validateNetworkType(networkType string) error {
+	// ถ้าไม่ส่งมา ให้ผ่าน (backward compatible / LIFF อาจตรวจไม่ได้)
+	if networkType == "" {
+		return nil
+	}
+
+	nt := strings.ToLower(strings.TrimSpace(networkType))
+
+	// อนุญาตเฉพาะ cellular / mobile
+	allowedTypes := map[string]bool{
+		"cellular": true,
+		"mobile":   true,
+		"4g":       true,
+		"5g":       true,
+		"3g":       true,
+		"lte":      true,
+	}
+
+	if !allowedTypes[nt] {
+		// WiFi หรือ type อื่นจะไม่อนุญาต
+		if nt == "wifi" {
+			return fmt.Errorf("กรุณาใช้อินเทอร์เน็ตมือถือ (Cellular) ในการเข้าสู่ระบบ ไม่สามารถใช้ WiFi ได้")
+		}
+		// Unknown type - log แต่ให้ผ่าน (เพื่อ backward compatible)
+		log.Printf("⚠️ Unknown network type: %s - allowing", nt)
+		return nil
+	}
+
+	return nil
+}
+
+// cleanPhoneNumber ลบ -, +66, ช่องว่าง ออก แล้วแปลงเป็น 0XXXXXXXXX
+func cleanPhoneNumber(phone string) string {
+	// ลบ characters ที่ไม่ใช่ตัวเลข
+	cleaned := ""
+	for _, ch := range phone {
+		if ch >= '0' && ch <= '9' {
+			cleaned += string(ch)
+		}
+	}
+
+	// แปลง 66XXXXXXXXX → 0XXXXXXXXX
+	if strings.HasPrefix(cleaned, "66") && len(cleaned) == 11 {
+		cleaned = "0" + cleaned[2:]
+	}
+
+	// แปลง +66... (ถ้าหลุดมา)
+	if strings.HasPrefix(cleaned, "660") {
+		cleaned = cleaned[2:]
+	}
+
+	return cleaned
+}
+
+// maskPhone ซ่อนเบอร์โทร เช่น 089XXXX567
+func maskPhone(phone string) string {
+	if len(phone) < 7 {
+		return phone
+	}
+	return phone[:3] + "XXXX" + phone[len(phone)-3:]
 }

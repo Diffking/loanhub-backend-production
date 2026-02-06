@@ -25,9 +25,15 @@ func NewHealthHandler() *HealthHandler {
 func (h *HealthHandler) Root(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "running",
-		"message": "🚀 SPSC loanEasy API v1.0 is running",
+		"message": "🚀 SPSC loanEasy API v2.2.2 is running",
 		"mode":    config.AppConfig.AppMode,
 		"docs":    "/swagger/index.html",
+		"features": []string{
+			"Gzip Compression",
+			"Pagination",
+			"Cache Headers",
+			"Mobile APIs",
+		},
 	})
 }
 
@@ -66,7 +72,9 @@ func (h *HealthHandler) HealthCheck(c *fiber.Ctx) error {
 
 func (h *HealthHandler) APIInfo(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
-		"message": "SPSC loanEasy API v1.0",
-		"version": "1.0.0",
+		"message": "SPSC loanEasy API v2.2.2",
+		"version": "2.2.2",
+		"v1":      "/api/v1 - Standard APIs",
+		"v2":      "/api/v2 - Mobile Optimized APIs",
 	})
 }

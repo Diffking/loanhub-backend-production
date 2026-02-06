@@ -44,6 +44,16 @@ type LINEProfile struct {
 	StatusMessage string `json:"statusMessage"`
 }
 
+// LINETokenVerifyResponse represents LINE token verify response
+// ============================================================
+// ✅ เพิ่มใหม่: สำหรับ verify LINE access token
+// ============================================================
+type LINETokenVerifyResponse struct {
+	Scope     string `json:"scope"`
+	ClientID  string `json:"client_id"`
+	ExpiresIn int    `json:"expires_in"`
+}
+
 // NewLINEService creates a new LINE service
 func NewLINEService(db *gorm.DB, channelID, channelSecret, callbackURL string) *LINEService {
 	return &LINEService{
@@ -137,6 +147,75 @@ func (s *LINEService) GetProfile(accessToken string) (*LINEProfile, error) {
 	}
 
 	return &profile, nil
+}
+
+// ============================================================
+// ✅ เพิ่มใหม่: VerifyAccessToken - ตรวจสอบ LINE Access Token
+// เรียก LINE API เพื่อ verify ว่า token นี้ถูกต้อง
+// และมาจาก Channel ของเราจริงๆ
+// ============================================================
+func (s *LINEService) VerifyAccessToken(accessToken string) (*LINETokenVerifyResponse, error) {
+	// เรียก LINE Verify API
+	verifyURL := fmt.Sprintf("https://api.line.me/oauth2/v2.1/verify?access_token=%s", url.QueryEscape(accessToken))
+
+	req, err := http.NewRequest("GET", verifyURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create verify request failed: %w", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("LINE verify request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read verify response failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("LINE token invalid: %s", string(body))
+	}
+
+	var verifyResp LINETokenVerifyResponse
+	if err := json.Unmarshal(body, &verifyResp); err != nil {
+		return nil, fmt.Errorf("parse verify response failed: %w", err)
+	}
+
+	// ✅ ตรวจสอบว่า token มาจาก Channel ของเราจริง
+	if verifyResp.ClientID != s.config.ChannelID {
+		return nil, fmt.Errorf("LINE token channel_id mismatch: expected %s, got %s",
+			s.config.ChannelID, verifyResp.ClientID)
+	}
+
+	// ตรวจว่า token ยังไม่หมดอายุ
+	if verifyResp.ExpiresIn <= 0 {
+		return nil, fmt.Errorf("LINE token expired")
+	}
+
+	return &verifyResp, nil
+}
+
+// ============================================================
+// ✅ เพิ่มใหม่: VerifyAndGetProfile - Verify token แล้วดึง profile
+// รวม 2 ขั้นตอนเป็น 1 function เพื่อความสะดวก
+// ============================================================
+func (s *LINEService) VerifyAndGetProfile(accessToken string) (*LINEProfile, error) {
+	// Step 1: Verify token
+	_, err := s.VerifyAccessToken(accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("token verification failed: %w", err)
+	}
+
+	// Step 2: Get profile
+	profile, err := s.GetProfile(accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("get profile failed: %w", err)
+	}
+
+	return profile, nil
 }
 
 // LinkUserLINE links LINE account to user

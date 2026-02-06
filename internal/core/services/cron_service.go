@@ -75,29 +75,27 @@ func (s *CronService) SendAppointmentReminders() {
 
 	log.Printf("📅 Checking appointments for: %s", tomorrow)
 
-	// Query appointments for tomorrow where:
-	// 1. Status is "PENDING" (not completed)
-	// 2. User has linked LINE account
-	// 3. Appointment is for "นัดจำนอง" step
+	// Query appointments for tomorrow from mortgages table where:
+	// 1. User has linked LINE account
+	// 2. Has appointment date set
 	var appointments []AppointmentReminder
 
 	query := `
 		SELECT 
 			u.memb_no,
-			COALESCE(f.Full_Name, u.username) as full_name,
+			COALESCE(f.full_name, u.username) as full_name,
 			u.line_user_id,
 			u.line_display_name,
-			lac.appt_date,
-			lac.appt_time,
-			lac.location,
-			la.name as appt_type
-		FROM loan_appt_currents lac
-		JOIN mortgages m ON lac.mortgage_id = m.id
+			m.appt_date,
+			m.appt_time,
+			m.appt_location as location,
+			COALESCE(la.name, 'นัดหมาย') as appt_type
+		FROM mortgages m
 		JOIN users u ON m.memb_no = u.memb_no
-		LEFT JOIN flommast f ON u.memb_no = f.MAST_MEMB_NO
-		LEFT JOIN loan_appts la ON lac.loan_appt_id = la.id
-		WHERE DATE(lac.appt_date) = ?
-		AND lac.status = 'PENDING'
+		LEFT JOIN flommast f ON u.memb_no = f.mast_memb_no
+		LEFT JOIN loan_appts la ON m.current_appt_id = la.id
+		WHERE DATE(m.appt_date) = ?
+		AND m.deleted_at IS NULL
 		AND u.line_user_id IS NOT NULL
 		AND u.line_user_id != ''
 	`

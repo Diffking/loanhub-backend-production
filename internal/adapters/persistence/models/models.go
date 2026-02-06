@@ -78,10 +78,10 @@ func (rt *RefreshToken) IsExpired() bool {
 
 // Flommast represents the legacy flommast table (Read Only!)
 type Flommast struct {
-	MastMembNo  string `gorm:"column:MAST_MEMB_NO;primaryKey" json:"mast_memb_no"`
-	FullName    string `gorm:"column:Full_Name" json:"full_name"`
-	DeptName    string `gorm:"column:DEPT_NAME" json:"dept_name"`
-	StsTypeDesc string `gorm:"column:STS_TYPE_DESC" json:"sts_type_desc"`
+	MastMembNo  string `gorm:"column:mast_memb_no;primaryKey" json:"mast_memb_no"`
+	FullName    string `gorm:"column:full_name" json:"full_name"`
+	DeptName    string `gorm:"column:dept_name" json:"dept_name"`
+	StsTypeDesc string `gorm:"column:sts_type_desc" json:"sts_type_desc"`
 }
 
 func (Flommast) TableName() string {
@@ -179,28 +179,34 @@ type Mortgage struct {
 	LoanTypeID      uint           `gorm:"not null" json:"loan_type_id"`
 	InterestRate    float64        `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
 	CurrentStepID   uint           `gorm:"not null" json:"current_step_id"`
-	CurrentApptID   *uint          `json:"current_appt_id"`
-        CurrentDocID   *uint          `json:"current_doc_id"`
-        ApptDate     *time.Time `gorm:"type:date" json:"appt_date"`
-        ApptTime     string     `gorm:"size:10" json:"appt_time"`
-        ApptLocation string     `gorm:"size:200" json:"appt_location"`
-        ApptStatus   string     `gorm:"size:20;default:PENDING" json:"appt_status"`
-	ApprovedBy      *uint          `json:"approved_by"`
-	ApprovedAt      *time.Time     `json:"approved_at"`
-	Remark          string         `gorm:"type:text" json:"remark"`
-	CreatedAt       time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt       time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Appointment fields (ย้ายมาจาก loan_appt_currents)
+	CurrentApptID *uint      `json:"current_appt_id"` // FK to loan_appts (master) - ประเภทนัดหมาย
+	ApptDate      *time.Time `gorm:"type:date" json:"appt_date"`
+	ApptTime      string     `gorm:"size:10" json:"appt_time"`
+	ApptLocation  string     `gorm:"size:200" json:"appt_location"`
+
+	// Document field (ย้ายมาจาก loan_doc_currents)
+	CurrentDocID *uint `json:"current_doc_id"` // FK to loan_docs (master) - เอกสารปัจจุบันที่ต้องส่ง
+
+	// Approval fields
+	ApprovedBy *uint      `json:"approved_by"`
+	ApprovedAt *time.Time `json:"approved_at"`
+	Remark     string     `gorm:"type:text" json:"remark"`
+
+	// Timestamps
+	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// Relations
-	Officer     *User            `gorm:"foreignKey:OfficerID" json:"officer,omitempty"`
-	Creator     *User            `gorm:"foreignKey:UserID" json:"creator,omitempty"`
-	LoanType    *LoanType        `gorm:"foreignKey:LoanTypeID" json:"loan_type,omitempty"`
-	CurrentStep *LoanStep        `gorm:"foreignKey:CurrentStepID" json:"current_step,omitempty"`
-        CurrentAppt  *LoanApptCurrent `gorm:"foreignKey:CurrentApptID" json:"current_appt,omitempty"`
-        CurrentDoc   *LoanDoc       `gorm:"foreignKey:CurrentDocID" json:"current_doc,omitempty"`
-	Approver    *User            `gorm:"foreignKey:ApprovedBy" json:"approver,omitempty"`
-	Documents   []LoanDocCurrent `gorm:"foreignKey:MortgageID" json:"documents,omitempty"`
+	Officer     *User     `gorm:"foreignKey:OfficerID" json:"officer,omitempty"`
+	Creator     *User     `gorm:"foreignKey:UserID" json:"creator,omitempty"`
+	LoanType    *LoanType `gorm:"foreignKey:LoanTypeID" json:"loan_type,omitempty"`
+	CurrentStep *LoanStep `gorm:"foreignKey:CurrentStepID" json:"current_step,omitempty"`
+	CurrentAppt *LoanAppt `gorm:"foreignKey:CurrentApptID" json:"current_appt,omitempty"` // ประเภทนัดหมาย
+	CurrentDoc  *LoanDoc  `gorm:"foreignKey:CurrentDocID" json:"current_doc,omitempty"`   // ประเภทเอกสาร
+	Approver    *User     `gorm:"foreignKey:ApprovedBy" json:"approver,omitempty"`
 }
 
 func (Mortgage) TableName() string {
@@ -224,11 +230,26 @@ type MortgageResponse struct {
 	InterestRate    float64    `json:"interest_rate"`
 	CurrentStepID   uint       `json:"current_step_id"`
 	CurrentStepName string     `json:"current_step_name,omitempty"`
-	ApprovedBy      *uint      `json:"approved_by"`
-	ApprovedAt      *time.Time `json:"approved_at"`
-	Remark          string     `json:"remark"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+
+	// Appointment info
+	CurrentApptID   *uint  `json:"current_appt_id"`
+	CurrentApptName string `json:"current_appt_name,omitempty"`
+	CurrentAppt     *LoanAppt `json:"current_appt,omitempty"`
+	ApptDate        string `json:"appt_date,omitempty"`
+	ApptTime        string `json:"appt_time,omitempty"`
+	ApptLocation    string `json:"appt_location,omitempty"`
+
+	// Document info
+	CurrentDocID   *uint  `json:"current_doc_id"`
+	CurrentDocName string `json:"current_doc_name,omitempty"`
+	CurrentDoc     *LoanDoc `json:"current_doc,omitempty"`
+
+	// Approval info
+	ApprovedBy *uint      `json:"approved_by"`
+	ApprovedAt *time.Time `json:"approved_at"`
+	Remark     string     `json:"remark"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 func (m *Mortgage) ToResponse() *MortgageResponse {
@@ -244,11 +265,20 @@ func (m *Mortgage) ToResponse() *MortgageResponse {
 		LoanTypeID:      m.LoanTypeID,
 		InterestRate:    m.InterestRate,
 		CurrentStepID:   m.CurrentStepID,
+		CurrentApptID:   m.CurrentApptID,
+		ApptTime:        m.ApptTime,
+		ApptLocation:    m.ApptLocation,
+		CurrentDocID:    m.CurrentDocID,
 		ApprovedBy:      m.ApprovedBy,
 		ApprovedAt:      m.ApprovedAt,
 		Remark:          m.Remark,
 		CreatedAt:       m.CreatedAt,
 		UpdatedAt:       m.UpdatedAt,
+	}
+
+	// Format appt_date
+	if m.ApptDate != nil {
+		resp.ApptDate = m.ApptDate.Format("2006-01-02")
 	}
 
 	if m.Officer != nil {
@@ -259,6 +289,14 @@ func (m *Mortgage) ToResponse() *MortgageResponse {
 	}
 	if m.CurrentStep != nil {
 		resp.CurrentStepName = m.CurrentStep.Name
+	}
+	if m.CurrentAppt != nil {
+		resp.CurrentApptName = m.CurrentAppt.Name
+		resp.CurrentAppt = m.CurrentAppt
+	}
+	if m.CurrentDoc != nil {
+		resp.CurrentDocName = m.CurrentDoc.Name
+		resp.CurrentDoc = m.CurrentDoc
 	}
 
 	return resp
@@ -310,110 +348,6 @@ const (
 )
 
 // ============================================================
-// Phase 4: Current Tables
-// ============================================================
-
-// LoanDocCurrent เอกสารปัจจุบัน (1:N กับ mortgage)
-type LoanDocCurrent struct {
-	ID          uint       `gorm:"primaryKey" json:"id"`
-	MortgageID  uint       `gorm:"not null;index" json:"mortgage_id"`
-	LoanDocID   uint       `gorm:"not null" json:"loan_doc_id"`
-	IsSubmitted bool       `gorm:"default:false" json:"is_submitted"`
-	CheckedBy   *uint      `json:"checked_by"`
-	CheckedAt   *time.Time `json:"checked_at"`
-	Remark      string     `gorm:"type:text" json:"remark"`
-	CreatedAt   time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt   time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-
-	// Relations
-	Mortgage *Mortgage `gorm:"foreignKey:MortgageID" json:"mortgage,omitempty"`
-	LoanDoc  *LoanDoc  `gorm:"foreignKey:LoanDocID" json:"loan_doc,omitempty"`
-	Checker  *User     `gorm:"foreignKey:CheckedBy" json:"checker,omitempty"`
-}
-
-func (LoanDocCurrent) TableName() string {
-	return "loan_doc_currents"
-}
-
-// LoanTypeCurrent ประเภทเงินกู้ ณ เวลานั้น
-type LoanTypeCurrent struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	TransactionID uint      `gorm:"not null;index" json:"transaction_id"`
-	MortgageID    uint      `gorm:"not null;index" json:"mortgage_id"`
-	LoanTypeID    uint      `gorm:"not null" json:"loan_type_id"`
-	InterestRate  float64   `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
-	Remark        string    `gorm:"type:text" json:"remark"`
-	CreatedAt     time.Time `gorm:"autoCreateTime" json:"created_at"`
-
-	// Relations
-	Transaction *Transaction `gorm:"foreignKey:TransactionID" json:"transaction,omitempty"`
-	Mortgage    *Mortgage    `gorm:"foreignKey:MortgageID" json:"mortgage,omitempty"`
-	LoanType    *LoanType    `gorm:"foreignKey:LoanTypeID" json:"loan_type,omitempty"`
-}
-
-func (LoanTypeCurrent) TableName() string {
-	return "loan_type_currents"
-}
-
-// LoanStepCurrent ขั้นตอน ณ เวลานั้น
-type LoanStepCurrent struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	TransactionID uint      `gorm:"not null;index" json:"transaction_id"`
-	MortgageID    uint      `gorm:"not null;index" json:"mortgage_id"`
-	LoanStepID    uint      `gorm:"not null" json:"loan_step_id"`
-	FromStepID    *uint     `json:"from_step_id"`
-	ChangedBy     uint      `gorm:"not null" json:"changed_by"`
-	ChangedAt     time.Time `gorm:"not null" json:"changed_at"`
-	Remark        string    `gorm:"type:text" json:"remark"`
-	CreatedAt     time.Time `gorm:"autoCreateTime" json:"created_at"`
-
-	// Relations
-	Transaction *Transaction `gorm:"foreignKey:TransactionID" json:"transaction,omitempty"`
-	Mortgage    *Mortgage    `gorm:"foreignKey:MortgageID" json:"mortgage,omitempty"`
-	LoanStep    *LoanStep    `gorm:"foreignKey:LoanStepID" json:"loan_step,omitempty"`
-	FromStep    *LoanStep    `gorm:"foreignKey:FromStepID" json:"from_step,omitempty"`
-	Changer     *User        `gorm:"foreignKey:ChangedBy" json:"changer,omitempty"`
-}
-
-func (LoanStepCurrent) TableName() string {
-	return "loan_step_currents"
-}
-
-// LoanApptCurrent นัดหมายปัจจุบัน
-type LoanApptCurrent struct {
-	ID            uint       `gorm:"primaryKey" json:"id"`
-	TransactionID *uint      `gorm:"index" json:"transaction_id"`
-	MortgageID    uint       `gorm:"not null;index" json:"mortgage_id"`
-	LoanApptID    uint       `gorm:"not null" json:"loan_appt_id"`
-	ApptDate      time.Time  `gorm:"type:date;not null" json:"appt_date"`
-	ApptTime      *string    `gorm:"size:10" json:"appt_time"`
-	Location      string     `gorm:"size:200" json:"location"`
-	ApptBy        uint       `gorm:"not null" json:"appt_by"`
-	Status        string     `gorm:"size:20;not null;default:'PENDING'" json:"status"`
-	CompletedAt   *time.Time `json:"completed_at"`
-	Remark        string     `gorm:"type:text" json:"remark"`
-	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
-
-	// Relations
-	Transaction *Transaction `gorm:"foreignKey:TransactionID" json:"transaction,omitempty"`
-	Mortgage    *Mortgage    `gorm:"foreignKey:MortgageID" json:"mortgage,omitempty"`
-	LoanAppt    *LoanAppt    `gorm:"foreignKey:LoanApptID" json:"loan_appt,omitempty"`
-	Officer     *User        `gorm:"foreignKey:ApptBy" json:"officer,omitempty"`
-}
-
-func (LoanApptCurrent) TableName() string {
-	return "loan_appt_currents"
-}
-
-// Appt Status
-const (
-	ApptStatusPending   = "PENDING"
-	ApptStatusCompleted = "COMPLETED"
-	ApptStatusCancelled = "CANCELLED"
-)
-
-// ============================================================
 // Auto Migration
 // ============================================================
 
@@ -432,10 +366,6 @@ func AutoMigrate(db *gorm.DB) error {
 		// Phase 4: Main Tables
 		&Mortgage{},
 		&Transaction{},
-		// Phase 4: Current Tables
-		&LoanDocCurrent{},
-		&LoanTypeCurrent{},
-		&LoanStepCurrent{},
-		&LoanApptCurrent{},
+		// ลบ _currents tables ออกแล้ว!
 	)
 }

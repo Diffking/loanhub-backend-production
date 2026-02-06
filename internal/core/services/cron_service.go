@@ -42,7 +42,7 @@ func NewCronService(db *gorm.DB) *CronService {
 	return &CronService{
 		db:          db,
 		cron:        c,
-		lineService: NewLINEService(db, channelID, channelSecret, callbackURL),
+		lineService: NewLINEService(db, channelID, channelSecret, callbackURL, os.Getenv("LIFF_CHANNEL_ID")),
 	}
 }
 

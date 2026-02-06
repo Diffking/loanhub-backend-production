@@ -28,6 +28,6 @@ services:
       - LINE_CHANNEL_SECRET=db0aa45d650e7d68d2931f1c29dde60e
       - LINE_CALLBACK_URL=https://api.loanspsc.com/api/v1/auth/line/callback
       # LINE Messaging API (ต้องขอ token เพิ่ม)
-      - LINE_CHANNEL_ACCESS_TOKEN=YOUR_MESSAGING_API_CHANNEL_ACCESS_TOKEN
+      - LINE_CHANNEL_ACCESS_TOKEN=xUXxqshSOcwqhIvledw01/Lv0UosGv1JmivE/DoU1cMEgYPLh9yXWfAStLIBv7EWvoApPT/dvFjisTX5QzKMKg18SwDqfwQe+/f4neUDuF6rIRhYcw+RlNwwcGECldDxW7HHInc0wnBu13ldVC+NDAdB04t89/1O/w1cDnyilFU=
       # Web App URL
       - WEB_APP_URL=https://loanspsc.com,https://admin.loanspsc.com

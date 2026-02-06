@@ -445,7 +445,7 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 	}
 
 	// ✅ ตรวจ Device ID - ต้องตรงกับที่ลงทะเบียนไว้
-	if deviceID != nil && *deviceID != "" && *deviceID != req.DeviceID {
+	if deviceID != nil && *deviceID != "" && *deviceID != req.DeviceID && role != "ADMIN" && role != "OFFICER" {
 		log.Printf("⚠️ Device mismatch for user %d: registered=%s, current=%s", id, *deviceID, req.DeviceID)
 		return response.Forbidden(c, "เครื่องนี้ไม่ตรงกับที่ลงทะเบียนไว้ กรุณาติดต่อสหกรณ์เพื่อเปลี่ยนเครื่อง")
 	}

@@ -16,7 +16,7 @@ import (
 // LINEConfig holds LINE API configuration
 type LINEConfig struct {
 	ChannelID     string
-	LIFFChannelID string // ✅ LIFF Channel ID (อาจต่างจาก LINE Login Channel)
+	LIFFChannelIDs []string // ✅ LIFF Channel IDs (รองรับหลาย channel)
 	ChannelSecret string
 	CallbackURL   string
 }
@@ -57,16 +57,26 @@ type LINETokenVerifyResponse struct {
 
 // NewLINEService creates a new LINE service
 func NewLINEService(db *gorm.DB, channelID, channelSecret, callbackURL, liffChannelID string) *LINEService {
-	if liffChannelID == "" {
-		liffChannelID = channelID // fallback ใช้ตัวเดียวกัน
+	// ✅ Split comma-separated LIFF channel IDs
+	var liffIDs []string
+	if liffChannelID != "" {
+		for _, id := range strings.Split(liffChannelID, ",") {
+			trimmed := strings.TrimSpace(id)
+			if trimmed != "" {
+				liffIDs = append(liffIDs, trimmed)
+			}
+		}
+	}
+	if len(liffIDs) == 0 {
+		liffIDs = []string{channelID} // fallback
 	}
 	return &LINEService{
 		db: db,
 		config: LINEConfig{
-			ChannelID:     channelID,
-			LIFFChannelID: liffChannelID,
-			ChannelSecret: channelSecret,
-			CallbackURL:   callbackURL,
+			ChannelID:      channelID,
+			LIFFChannelIDs: liffIDs,
+			ChannelSecret:  channelSecret,
+			CallbackURL:    callbackURL,
 		},
 	}
 }
@@ -190,9 +200,17 @@ func (s *LINEService) VerifyAccessToken(accessToken string) (*LINETokenVerifyRes
 	}
 
 	// ✅ ตรวจสอบว่า token มาจาก Channel ของเราจริง
-	if verifyResp.ClientID != s.config.ChannelID && verifyResp.ClientID != s.config.LIFFChannelID {
-		return nil, fmt.Errorf("LINE token channel_id mismatch: expected %s or %s, got %s",
-			s.config.ChannelID, s.config.LIFFChannelID, verifyResp.ClientID)
+	// ✅ ตรวจ channel ID - รองรับหลาย LIFF channels
+	validChannel := verifyResp.ClientID == s.config.ChannelID
+	for _, liffID := range s.config.LIFFChannelIDs {
+		if verifyResp.ClientID == liffID {
+			validChannel = true
+			break
+		}
+	}
+	if !validChannel {
+		return nil, fmt.Errorf("LINE token channel_id mismatch: expected %s or %v, got %s",
+			s.config.ChannelID, s.config.LIFFChannelIDs, verifyResp.ClientID)
 	}
 
 	// ตรวจว่า token ยังไม่หมดอายุ

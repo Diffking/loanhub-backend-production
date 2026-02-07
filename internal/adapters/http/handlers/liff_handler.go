@@ -21,7 +21,8 @@ import (
 // LIFF Handler v2 - เพิ่ม Security Features
 // ✅ LINE Token Verification (ป้องกันปลอม LINE User ID)
 // ✅ Device ID Binding (ผูก 1 คน = 1 เครื่อง)
-// ✅ Network Type Check (บังคับ Cellular)
+// ✅ Network Type Check (บังคับ Cellular เฉพาะ Register)
+// ✅ Login อนุญาต WiFi (มี LINE Token + Device ID ป้องกัน)
 // ✅ OTP Phone Verification (ยืนยันเบอร์โทร)
 // ============================================================
 
@@ -396,7 +397,9 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 }
 
 // ============================================================
-// 5. Login with LIFF - เข้าสู่ระบบ (ตรวจ Device + Network)
+// 5. Login with LIFF - เข้าสู่ระบบ (ตรวจ Device, อนุญาต WiFi)
+//    Security: LINE Token Verify + Device ID Binding
+//    WiFi: อนุญาต (บังคับ Cellular เฉพาะ Register เท่านั้น)
 // ============================================================
 // @Summary Login with LIFF (Secured)
 // @Tags LIFF
@@ -418,9 +421,10 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 		return response.BadRequest(c, "กรุณาระบุ Device ID")
 	}
 
-	// ✅ ตรวจ Network Type - บังคับ Cellular
-	if err := h.validateNetworkType(req.NetworkType); err != nil {
-		return response.BadRequest(c, err.Error())
+	// ✅ Login: อนุญาต WiFi ได้ (บังคับ Cellular เฉพาะ Register เท่านั้น)
+	//    Security ตอน Login ใช้ LINE Token Verify + Device ID Check แทน
+	if nt := strings.ToLower(strings.TrimSpace(req.NetworkType)); nt == "wifi" {
+		log.Printf("⚠️ Login via WiFi (allowed) - will verify LINE token + device ID")
 	}
 
 	// ✅ Verify LINE Token แล้วดึง profile จาก LINE โดยตรง

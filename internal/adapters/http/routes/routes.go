@@ -187,25 +187,27 @@ func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *co
 }
 
 // ============================================================
-// ✅ LIFF Routes - เพิ่ม OTP + Device endpoints
+// ✅ LIFF Routes - เพิ่ม Rate Limiter ป้องกัน spam/brute force
+//    StrictRateLimiter = 3 req/min/IP (OTP, register, device change)
+//    AuthRateLimiter   = 5 req/min/IP (check, login, device info)
 // ============================================================
 func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
-	// Check if LINE user exists in system
-	router.Post("/check", handler.CheckLineUser)
+	// Check if LINE user exists in system (5 req/min/IP)
+	router.Post("/check", middleware.AuthRateLimiter(), handler.CheckLineUser)
 
-	// OTP routes
-	router.Post("/otp/request", handler.RequestOTP) // ✅ ขอ OTP
-	router.Post("/otp/verify", handler.VerifyOTP)    // ✅ ยืนยัน OTP
+	// OTP routes (3 req/min/IP — ป้องกัน OTP spam + brute force)
+	router.Post("/otp/request", middleware.StrictRateLimiter(), handler.RequestOTP)
+	router.Post("/otp/verify", middleware.StrictRateLimiter(), handler.VerifyOTP)
 
-	// Register - Link LINE with Member Number (ต้อง verify OTP ก่อน)
-	router.Post("/register", handler.Register)
+	// Register - Link LINE with Member Number (3 req/min/IP)
+	router.Post("/register", middleware.StrictRateLimiter(), handler.Register)
 
-	// Login with LIFF (ตรวจ device + network)
-	router.Post("/login", handler.LoginWithLiff)
+	// Login with LIFF (5 req/min/IP — อนุญาต WiFi)
+	router.Post("/login", middleware.AuthRateLimiter(), handler.LoginWithLiff)
 
 	// Device management
-	router.Post("/device/change", handler.ChangeDevice) // ✅ ขอเปลี่ยนเครื่อง
-	router.Post("/device/info", handler.GetDeviceInfo)   // ✅ ดูข้อมูล device
+	router.Post("/device/change", middleware.StrictRateLimiter(), handler.ChangeDevice) // 3 req/min/IP
+	router.Post("/device/info", middleware.AuthRateLimiter(), handler.GetDeviceInfo)     // 5 req/min/IP
 }
 
 // setupUserRoutes configures user management routes (Admin only)

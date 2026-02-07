@@ -229,8 +229,7 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 
 	return response.Success(c, "ส่ง OTP สำเร็จ", fiber.Map{
 		"phone_masked": maskPhone(cleanPhone),
-		"otp_code":     otpCode, // ✅ ส่ง OTP กลับให้ frontend แสดงในหน้าเว็บ (ไม่ต้องสลับไปดูใน LINE)
-		"expires_in":   300,     // 5 minutes
+		"expires_in":   300, // 5 minutes
 	})
 }
 
@@ -446,7 +445,7 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 	}
 
 	// ✅ ตรวจ Device ID - ต้องตรงกับที่ลงทะเบียนไว้
-	if deviceID != nil && *deviceID != "" && *deviceID != req.DeviceID && role != "ADMIN" && role != "OFFICER" {
+	if deviceID != nil && *deviceID != "" && *deviceID != req.DeviceID {
 		log.Printf("⚠️ Device mismatch for user %d: registered=%s, current=%s", id, *deviceID, req.DeviceID)
 		return response.Forbidden(c, "เครื่องนี้ไม่ตรงกับที่ลงทะเบียนไว้ กรุณาติดต่อสหกรณ์เพื่อเปลี่ยนเครื่อง")
 	}

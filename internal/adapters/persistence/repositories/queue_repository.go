@@ -356,9 +356,10 @@ func (r *QueueRepository) GetBookingTicketsForDate(bookingDate time.Time) ([]mod
 // GetAvailableSlots returns available booking slots for a branch/service/date
 func (r *QueueRepository) GetAvailableSlots(branchID uint, serviceTypeID uint, slotDate time.Time) ([]models.BookingSlot, error) {
 	var slots []models.BookingSlot
+	dateStr := slotDate.Format("2006-01-02")
 	err := r.db.
-		Where("branch_id = ? AND service_type_id = ? AND slot_date = ? AND is_available = ?",
-			branchID, serviceTypeID, slotDate, true).
+		Where("branch_id = ? AND service_type_id = ? AND DATE(slot_date) = ? AND is_available = ?",
+			branchID, serviceTypeID, dateStr, true).
 		Order("slot_time ASC").
 		Find(&slots).Error
 	return slots, err
@@ -368,8 +369,8 @@ func (r *QueueRepository) GetAvailableSlots(branchID uint, serviceTypeID uint, s
 func (r *QueueRepository) GetBookingSlot(branchID uint, serviceTypeID uint, slotDate time.Time, slotTime string) (*models.BookingSlot, error) {
 	var slot models.BookingSlot
 	err := r.db.
-		Where("branch_id = ? AND service_type_id = ? AND slot_date = ? AND slot_time = ?",
-			branchID, serviceTypeID, slotDate, slotTime).
+		Where("branch_id = ? AND service_type_id = ? AND DATE(slot_date) = ? AND slot_time = ?",
+			branchID, serviceTypeID, slotDate.Format("2006-01-02"), slotTime).
 		First(&slot).Error
 	if err == gorm.ErrRecordNotFound {
 		return nil, nil

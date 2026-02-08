@@ -182,12 +182,12 @@ func setupAPIV1Routes(
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
 
 	// Phase 2+4+5: Queue routes (Authenticated users)
+	setupQueueDisplayRoutes(router, queueDisplayHandler)
 	queueRoutes := router.Group("/queue")
 	queueRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupQueueRoutes(queueRoutes, queueHandler)
 
 	// Phase 6: Queue Display routes (PUBLIC — no auth for TV screens)
-	setupQueueDisplayRoutes(router, queueDisplayHandler)
 
 	// Phase 2+5: Queue admin routes (Officer/Admin only)
 	queueAdminRoutes := router.Group("/admin/queue")

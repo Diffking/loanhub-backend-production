@@ -29,6 +29,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	mortgageRepo := repositories.NewMortgageRepository(db)
 	transactionRepo := repositories.NewTransactionRepository(db)
 
+	// Phase 2: Queue repository
+	queueRepo := repositories.NewQueueRepository(db)
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
 	userService := services.NewUserService(userRepo, memberRepo)
@@ -52,6 +55,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard service
 	dashboardService := services.NewDashboardService(db)
 
+	// Phase 2: Queue service
+	queueService := services.NewQueueService(queueRepo)
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
 	authHandler := handlers.NewAuthHandler(authService, cfg)
@@ -63,6 +69,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 
 	// Phase 5: Dashboard handler
 	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
+
+	// Phase 2: Queue handlers
+	queueHandler := handlers.NewQueueHandler(queueService)
+	queueAdminHandler := handlers.NewQueueAdminHandler(queueService)
 
 	// LINE Handler
 	lineHandler := handlers.NewLINEHandler(db)
@@ -94,7 +104,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
-	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler, masterHandler, dashboardHandler, lineHandler, liffHandler, cfg)
+	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
+		masterHandler, dashboardHandler, lineHandler, liffHandler,
+		queueHandler, queueAdminHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -112,6 +124,8 @@ func setupAPIV1Routes(
 	dashboardHandler *handlers.DashboardHandler,
 	lineHandler *handlers.LINEHandler,
 	liffHandler *handlers.LIFFHandler,
+	queueHandler *handlers.QueueHandler,
+	queueAdminHandler *handlers.QueueAdminHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -153,6 +167,17 @@ func setupAPIV1Routes(
 	dashboardRoutes := router.Group("/dashboard")
 	dashboardRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
+
+	// Phase 2: Queue routes (Authenticated users)
+	queueRoutes := router.Group("/queue")
+	queueRoutes.Use(middleware.AuthMiddleware(cfg))
+	setupQueueRoutes(queueRoutes, queueHandler)
+
+	// Phase 2: Queue admin routes (Officer/Admin only)
+	queueAdminRoutes := router.Group("/admin/queue")
+	queueAdminRoutes.Use(middleware.AuthMiddleware(cfg))
+	queueAdminRoutes.Use(middleware.OfficerOrAdmin())
+	setupQueueAdminRoutes(queueAdminRoutes, queueAdminHandler)
 }
 
 // setupAuthRoutes configures authentication routes
@@ -298,6 +323,53 @@ func setupDashboardRoutes(router fiber.Router, handler *handlers.DashboardHandle
 
 	// Admin dashboard (Admin only)
 	router.Get("/admin", middleware.AdminOnly(), handler.GetAdminDashboard)
+}
+
+// ============================================================
+// Phase 2: Queue Routes
+// ============================================================
+
+// setupQueueRoutes configures queue routes for users (Phase 2)
+func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
+	// Branch info
+	router.Get("/branches", handler.GetBranches)
+	router.Get("/branches/:id/services", handler.GetBranchServices)
+	router.Get("/branches/:id/status", handler.GetBranchStatus)
+
+	// Walk-in
+	router.Post("/walkin", handler.CreateWalkin)
+
+	// My tickets
+	router.Get("/my-tickets", handler.GetMyTickets)
+	router.Get("/my-tickets/:id", handler.GetMyTicketByID)
+
+	// Track by ticket number
+	router.Get("/track/:ticket_number", handler.TrackTicket)
+}
+
+// setupQueueAdminRoutes configures queue admin routes for officers (Phase 2)
+func setupQueueAdminRoutes(router fiber.Router, handler *handlers.QueueAdminHandler) {
+	// Counter management
+	router.Post("/counter/open", handler.OpenCounter)
+	router.Post("/counter/close", handler.CloseCounter)
+	router.Post("/counter/break", handler.BreakCounter)
+
+	// Call & Serve
+	router.Post("/call-next", handler.CallNext)
+	router.Post("/call/:id", handler.CallSpecific)
+	router.Post("/recall/:id", handler.Recall)
+	router.Post("/serve/:id", handler.Serve)
+	router.Post("/complete/:id", handler.Complete)
+	router.Post("/skip/:id", handler.Skip)
+	router.Post("/transfer/:id", handler.Transfer)
+
+	// Dashboard & History
+	router.Get("/dashboard", handler.Dashboard)
+	router.Get("/history", handler.History)
+
+	// Config
+	router.Get("/config", handler.GetConfig)
+	router.Put("/config", handler.UpdateConfig)
 }
 
 // setupAPIV2Routes configures API v2 routes (Mobile-optimized)

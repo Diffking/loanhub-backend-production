@@ -305,3 +305,140 @@ func (r *QueueRepository) UpdateConfig(branchID uint, key string, value string) 
 	}
 	return r.db.Model(&config).Update("config_value", value).Error
 }
+
+// ============================================================
+// Phase 4: Auto-cancel + Nearly-turn Queries
+// ============================================================
+
+// GetExpiredBookingTickets returns BOOKING tickets that are WAITING and past the grace period
+// booking_date = today, slot_time + graceMinutes < now
+func (r *QueueRepository) GetExpiredBookingTickets(queueDate time.Time, now time.Time, graceMinutes int) ([]models.QueueTicket, error) {
+	var tickets []models.QueueTicket
+
+	// We compare: booking_date = today AND queue_type = BOOKING AND status = WAITING
+	// AND the slot_time + grace period has passed
+	// slot_time is stored as "HH:MM", so we compute cutoff = now - graceMinutes
+	cutoffTime := now.Add(-time.Duration(graceMinutes) * time.Minute).Format("15:04")
+
+	err := r.db.
+		Preload("Branch").
+		Where("queue_date = ? AND queue_type = ? AND status = ? AND booking_date = ? AND booking_slot < ? AND booking_slot != ''",
+			queueDate, "BOOKING", "WAITING", queueDate, cutoffTime).
+		Find(&tickets).Error
+	return tickets, err
+}
+
+// GetUnnotifiedWaitingTickets returns WAITING tickets that haven't been notified yet
+func (r *QueueRepository) GetUnnotifiedWaitingTickets(queueDate time.Time) ([]models.QueueTicket, error) {
+	var tickets []models.QueueTicket
+	err := r.db.
+		Where("queue_date = ? AND status = ? AND notify_sent = ?", queueDate, "WAITING", false).
+		Order("issued_at ASC").
+		Find(&tickets).Error
+	return tickets, err
+}
+
+// GetBookingTicketsForDate returns all BOOKING tickets for a specific date (for reminders)
+func (r *QueueRepository) GetBookingTicketsForDate(bookingDate time.Time) ([]models.QueueTicket, error) {
+	var tickets []models.QueueTicket
+	err := r.db.
+		Preload("Branch").
+		Preload("ServiceType").
+		Where("queue_type = ? AND booking_date = ? AND status = ?", "BOOKING", bookingDate, "WAITING").
+		Find(&tickets).Error
+	return tickets, err
+}
+
+// ============================================================
+// Phase 5: Booking Slot Queries
+// ============================================================
+
+// GetAvailableSlots returns available booking slots for a branch/service/date
+func (r *QueueRepository) GetAvailableSlots(branchID uint, serviceTypeID uint, slotDate time.Time) ([]models.BookingSlot, error) {
+	var slots []models.BookingSlot
+	err := r.db.
+		Where("branch_id = ? AND service_type_id = ? AND slot_date = ? AND is_available = ?",
+			branchID, serviceTypeID, slotDate, true).
+		Order("slot_time ASC").
+		Find(&slots).Error
+	return slots, err
+}
+
+// GetBookingSlot returns a specific slot
+func (r *QueueRepository) GetBookingSlot(branchID uint, serviceTypeID uint, slotDate time.Time, slotTime string) (*models.BookingSlot, error) {
+	var slot models.BookingSlot
+	err := r.db.
+		Where("branch_id = ? AND service_type_id = ? AND slot_date = ? AND slot_time = ?",
+			branchID, serviceTypeID, slotDate, slotTime).
+		First(&slot).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return &slot, err
+}
+
+// IncrementBookingSlot increments current_bookings for a slot
+func (r *QueueRepository) IncrementBookingSlot(slotID uint) error {
+	return r.db.Model(&models.BookingSlot{}).
+		Where("id = ?", slotID).
+		UpdateColumn("current_bookings", gorm.Expr("current_bookings + 1")).Error
+}
+
+// DecrementBookingSlot decrements current_bookings for a slot (on cancel)
+func (r *QueueRepository) DecrementBookingSlot(branchID uint, serviceTypeID uint, slotDate time.Time, slotTime string) error {
+	return r.db.Model(&models.BookingSlot{}).
+		Where("branch_id = ? AND service_type_id = ? AND slot_date = ? AND slot_time = ? AND current_bookings > 0",
+			branchID, serviceTypeID, slotDate, slotTime).
+		UpdateColumn("current_bookings", gorm.Expr("current_bookings - 1")).Error
+}
+
+// GenerateBookingSlots creates booking slots for a date range
+func (r *QueueRepository) GenerateBookingSlots(slots []models.BookingSlot) error {
+	if len(slots) == 0 {
+		return nil
+	}
+	return r.db.Create(&slots).Error
+}
+
+// GetBookingsByBranch returns all booking tickets for a branch today
+func (r *QueueRepository) GetBookingsByBranch(branchID uint, queueDate time.Time) ([]models.QueueTicket, error) {
+	var tickets []models.QueueTicket
+	err := r.db.
+		Preload("Branch").
+		Preload("ServiceType").
+		Preload("User").
+		Where("branch_id = ? AND queue_type = ? AND queue_date = ?", branchID, "BOOKING", queueDate).
+		Order("booking_slot ASC").
+		Find(&tickets).Error
+	return tickets, err
+}
+
+// GetActiveBookingByUser checks if user already has an active booking for the same branch+service+date
+func (r *QueueRepository) GetActiveBookingByUser(userID uint, branchID uint, serviceTypeID uint, bookingDate time.Time) (*models.QueueTicket, error) {
+	var ticket models.QueueTicket
+	err := r.db.
+		Where("user_id = ? AND branch_id = ? AND service_type_id = ? AND booking_date = ? AND queue_type = ? AND status IN ?",
+			userID, branchID, serviceTypeID, bookingDate, "BOOKING", []string{"WAITING", "CALLING", "SERVING"}).
+		First(&ticket).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return &ticket, err
+}
+
+// ============================================================
+// Phase 6: Display Data Queries
+// ============================================================
+
+// GetCurrentCallingTickets returns tickets currently being called for a branch
+func (r *QueueRepository) GetCurrentCallingTickets(branchID uint, queueDate time.Time) ([]models.QueueTicket, error) {
+	var tickets []models.QueueTicket
+	err := r.db.
+		Preload("ServiceType").
+		Preload("Counter").
+		Where("branch_id = ? AND queue_date = ? AND status IN ?",
+			branchID, queueDate, []string{"CALLING", "SERVING"}).
+		Order("called_at DESC").
+		Find(&tickets).Error
+	return tickets, err
+}

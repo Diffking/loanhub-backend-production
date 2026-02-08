@@ -358,3 +358,62 @@ func (h *QueueAdminHandler) UpdateConfig(c *fiber.Ctx) error {
 	}
 	return response.Success(c, "Config updated", nil)
 }
+
+// ============================================================
+// Phase 5: Booking Admin endpoints
+// ============================================================
+
+// GET /api/v1/admin/queue/bookings?branch_id=X — การจองทั้งหมด
+func (h *QueueAdminHandler) GetBookings(c *fiber.Ctx) error {
+	branchID, err := strconv.ParseUint(c.Query("branch_id", "0"), 10, 32)
+	if err != nil || branchID == 0 {
+		return response.BadRequest(c, "branch_id query parameter is required")
+	}
+
+	bookings, err := h.queueService.GetBookingsByBranch(uint(branchID))
+	if err != nil {
+		return response.InternalServerError(c, "Failed to get bookings")
+	}
+	return response.Success(c, "Bookings retrieved", bookings)
+}
+
+// POST /api/v1/admin/queue/booking/:id/checkin — Check-in Booking
+func (h *QueueAdminHandler) CheckinBooking(c *fiber.Ctx) error {
+	ticketID, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil {
+		return response.BadRequest(c, "Invalid booking ID")
+	}
+
+	ticket, err := h.queueService.CheckinBooking(uint(ticketID))
+	if err != nil {
+		switch err {
+		case services.ErrBookingNotFound:
+			return response.NotFound(c, "Booking not found")
+		case services.ErrBookingNotWaiting:
+			return response.BadRequest(c, "Booking is not in WAITING status")
+		default:
+			return response.InternalServerError(c, "Failed to check-in booking")
+		}
+	}
+	return response.Success(c, "Booking checked in", ticket)
+}
+
+// POST /api/v1/admin/queue/slots/generate — สร้าง booking slots
+func (h *QueueAdminHandler) GenerateSlots(c *fiber.Ctx) error {
+	var input services.GenerateSlotsInput
+	if err := c.BodyParser(&input); err != nil {
+		return response.BadRequest(c, "Invalid request body")
+	}
+	if input.BranchID == 0 || input.ServiceTypeID == 0 || input.StartDate == "" || input.EndDate == "" {
+		return response.BadRequest(c, "branch_id, service_type_id, start_date, and end_date are required")
+	}
+
+	count, err := h.queueService.GenerateBookingSlots(&input)
+	if err != nil {
+		return response.BadRequest(c, err.Error())
+	}
+
+	return response.Success(c, "Booking slots generated", map[string]interface{}{
+		"slots_created": count,
+	})
+}

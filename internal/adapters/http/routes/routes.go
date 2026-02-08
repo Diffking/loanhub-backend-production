@@ -58,6 +58,15 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 2: Queue service
 	queueService := services.NewQueueService(queueRepo)
 
+	// ============================================================
+	// Phase 4: Queue Notify + Auto services
+	// ============================================================
+	queueNotifyService := services.NewQueueNotifyService()
+	queueService.SetNotifyService(queueNotifyService)
+
+	queueAutoService := services.NewQueueAutoService(queueRepo, queueNotifyService)
+	queueAutoService.Start() // Launch background goroutines
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
 	authHandler := handlers.NewAuthHandler(authService, cfg)
@@ -70,15 +79,18 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard handler
 	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
 
-	// Phase 2: Queue handlers
-	queueHandler := handlers.NewQueueHandler(queueService)
+	// Phase 2+4+5: Queue handlers (updated constructors)
+	queueHandler := handlers.NewQueueHandler(queueService, queueNotifyService)
 	queueAdminHandler := handlers.NewQueueAdminHandler(queueService)
+
+	// Phase 6: Display handler
+	queueDisplayHandler := handlers.NewQueueDisplayHandler(queueService, queueNotifyService)
 
 	// LINE Handler
 	lineHandler := handlers.NewLINEHandler(db)
 
 	// ============================================================
-	// ✅ LIFF Handler v2 - รับ lineService + otpService
+	// LIFF Handler v2 - รับ lineService + otpService
 	// ============================================================
 	lineService := lineHandler.GetLINEService()
 	otpService := services.NewOTPService(db)
@@ -106,7 +118,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
 		masterHandler, dashboardHandler, lineHandler, liffHandler,
-		queueHandler, queueAdminHandler, cfg)
+		queueHandler, queueAdminHandler, queueDisplayHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -126,6 +138,7 @@ func setupAPIV1Routes(
 	liffHandler *handlers.LIFFHandler,
 	queueHandler *handlers.QueueHandler,
 	queueAdminHandler *handlers.QueueAdminHandler,
+	queueDisplayHandler *handlers.QueueDisplayHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -168,12 +181,15 @@ func setupAPIV1Routes(
 	dashboardRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
 
-	// Phase 2: Queue routes (Authenticated users)
+	// Phase 2+4+5: Queue routes (Authenticated users)
 	queueRoutes := router.Group("/queue")
 	queueRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupQueueRoutes(queueRoutes, queueHandler)
 
-	// Phase 2: Queue admin routes (Officer/Admin only)
+	// Phase 6: Queue Display routes (PUBLIC — no auth for TV screens)
+	setupQueueDisplayRoutes(router, queueDisplayHandler)
+
+	// Phase 2+5: Queue admin routes (Officer/Admin only)
 	queueAdminRoutes := router.Group("/admin/queue")
 	queueAdminRoutes.Use(middleware.AuthMiddleware(cfg))
 	queueAdminRoutes.Use(middleware.OfficerOrAdmin())
@@ -212,27 +228,25 @@ func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *co
 }
 
 // ============================================================
-// ✅ LIFF Routes - เพิ่ม Rate Limiter ป้องกัน spam/brute force
-//    StrictRateLimiter = 3 req/min/IP (OTP, register, device change)
-//    AuthRateLimiter   = 5 req/min/IP (check, login, device info)
+// LIFF Routes
 // ============================================================
 func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
 	// Check if LINE user exists in system (5 req/min/IP)
 	router.Post("/check", middleware.AuthRateLimiter(), handler.CheckLineUser)
 
-	// OTP routes (3 req/min/IP — ป้องกัน OTP spam + brute force)
+	// OTP routes (3 req/min/IP)
 	router.Post("/otp/request", middleware.StrictRateLimiter(), handler.RequestOTP)
 	router.Post("/otp/verify", middleware.StrictRateLimiter(), handler.VerifyOTP)
 
 	// Register - Link LINE with Member Number (3 req/min/IP)
 	router.Post("/register", middleware.StrictRateLimiter(), handler.Register)
 
-	// Login with LIFF (5 req/min/IP — อนุญาต WiFi)
+	// Login with LIFF (5 req/min/IP)
 	router.Post("/login", middleware.AuthRateLimiter(), handler.LoginWithLiff)
 
 	// Device management
-	router.Post("/device/change", middleware.StrictRateLimiter(), handler.ChangeDevice) // 3 req/min/IP
-	router.Post("/device/info", middleware.AuthRateLimiter(), handler.GetDeviceInfo)     // 5 req/min/IP
+	router.Post("/device/change", middleware.StrictRateLimiter(), handler.ChangeDevice)
+	router.Post("/device/info", middleware.AuthRateLimiter(), handler.GetDeviceInfo)
 }
 
 // setupUserRoutes configures user management routes (Admin only)
@@ -326,10 +340,9 @@ func setupDashboardRoutes(router fiber.Router, handler *handlers.DashboardHandle
 }
 
 // ============================================================
-// Phase 2: Queue Routes
+// Phase 2+4+5: Queue Routes (Authenticated users)
 // ============================================================
 
-// setupQueueRoutes configures queue routes for users (Phase 2)
 func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 	// Branch info
 	router.Get("/branches", handler.GetBranches)
@@ -345,9 +358,20 @@ func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 
 	// Track by ticket number
 	router.Get("/track/:ticket_number", handler.TrackTicket)
+
+	// Phase 4: SSE real-time events
+	router.Get("/events", handler.SSEEvents)
+
+	// Phase 5: Booking
+	router.Get("/booking/slots", handler.GetBookingSlots)
+	router.Post("/booking", handler.CreateBooking)
+	router.Delete("/booking/:id", handler.CancelBooking)
 }
 
-// setupQueueAdminRoutes configures queue admin routes for officers (Phase 2)
+// ============================================================
+// Phase 2+5: Queue Admin Routes (Officer/Admin)
+// ============================================================
+
 func setupQueueAdminRoutes(router fiber.Router, handler *handlers.QueueAdminHandler) {
 	// Counter management
 	router.Post("/counter/open", handler.OpenCounter)
@@ -370,6 +394,20 @@ func setupQueueAdminRoutes(router fiber.Router, handler *handlers.QueueAdminHand
 	// Config
 	router.Get("/config", handler.GetConfig)
 	router.Put("/config", handler.UpdateConfig)
+
+	// Phase 5: Booking management
+	router.Get("/bookings", handler.GetBookings)
+	router.Post("/booking/:id/checkin", handler.CheckinBooking)
+	router.Post("/slots/generate", handler.GenerateSlots)
+}
+
+// ============================================================
+// Phase 6: Queue Display Routes (PUBLIC — no auth)
+// ============================================================
+
+func setupQueueDisplayRoutes(router fiber.Router, handler *handlers.QueueDisplayHandler) {
+	router.Get("/queue/display/:branch_id", handler.GetDisplayData)
+	router.Get("/queue/display/:branch_id/events", handler.DisplaySSE)
 }
 
 // setupAPIV2Routes configures API v2 routes (Mobile-optimized)

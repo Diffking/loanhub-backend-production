@@ -61,6 +61,11 @@ func main() {
 	// Seed master data (Phase 4)
 	if err := config.SeedMasterData(db); err != nil {
 		log.Printf("⚠️ Warning: Failed to seed master data: %v", err)
+
+	// Seed queue data (Phase Queue)
+	if err := config.SeedQueueData(db); err != nil {
+		log.Printf("⚠️ Warning: Failed to seed queue data: %v", err)
+	}
 	}
 
 	// Start Cron Service for LINE reminders (08:30 daily)

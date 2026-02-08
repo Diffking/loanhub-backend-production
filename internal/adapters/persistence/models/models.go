@@ -366,6 +366,13 @@ func AutoMigrate(db *gorm.DB) error {
 		// Phase 4: Main Tables
 		&Mortgage{},
 		&Transaction{},
+		// Phase Queue: Queue System
+		&Branch{},
+		&ServiceType{},
+		&ServiceCounter{},
+		&QueueTicket{},
+		&BookingSlot{},
+		&QueueConfig{},
 		// ลบ _currents tables ออกแล้ว!
 	)
 }

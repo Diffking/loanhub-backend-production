@@ -210,6 +210,7 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 	// Generate OTP
 	otpCode, err := h.otpService.GenerateOTP(profile.UserID, cleanPhone)
 	if err != nil {
+		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -236,11 +237,14 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 		"provider":     h.smsService.GetProviderName(),
 	}
 
-	// 🧪 Dev mode เท่านั้น: ส่ง OTP กลับเพื่อทดสอบ
+	// แสดง OTP เมื่อ dev mode หรือ LINE fallback
 	appMode := strings.TrimSpace(os.Getenv("APP_MODE"))
-	if appMode == "dev" {
-		responseData["otp_code"] = otpCode // ⚠️ เฉพาะ dev mode เท่านั้น!
-		responseData["_dev_warning"] = "OTP is included in response for dev/test only. This will be removed in production."
+	providerName := h.smsService.GetProviderName()
+	if appMode == "dev" || providerName == "line_fallback" {
+		responseData["otp_code"] = otpCode
+		if appMode == "dev" {
+			responseData["_dev_warning"] = "OTP included for dev/test only"
+		}
 	}
 
 	return response.Success(c, "ส่ง OTP สำเร็จ กรุณาตรวจสอบ SMS ที่เบอร์ "+maskPhone(cleanPhone), responseData)
@@ -274,6 +278,7 @@ func (h *LIFFHandler) VerifyOTP(c *fiber.Ctx) error {
 
 	// Verify OTP
 	if err := h.otpService.VerifyOTP(profile.UserID, req.OTPCode); err != nil {
+		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -293,6 +298,7 @@ func (h *LIFFHandler) VerifyOTP(c *fiber.Ctx) error {
 // @Success 200 {object} response.Response
 // @Router /auth/liff/register [post]
 func (h *LIFFHandler) Register(c *fiber.Ctx) error {
+	log.Println("🔍 [REGISTER] Start")
 	var req LIFFRegisterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
@@ -310,7 +316,9 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// ✅ ตรวจ Network Type - บังคับ Cellular
+	log.Printf("🔍 [REGISTER] NetworkType=%s, DeviceID=%s, MembNo=%s, OTP=%s", req.NetworkType, req.DeviceID, req.MembNo, req.OTPCode)
 	if err := h.validateNetworkType(req.NetworkType); err != nil {
+		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -323,7 +331,9 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	lineUserID := profile.UserID
 
 	// ✅ Verify OTP (ต้อง verify ก่อนหน้านี้แล้ว หรือ verify ตอน register เลย)
+	log.Printf("🔍 [REGISTER] lineUserID=%s, verifying OTP...", lineUserID)
 	if err := h.otpService.VerifyOTP(lineUserID, req.OTPCode); err != nil {
+		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -551,7 +561,9 @@ func (h *LIFFHandler) ChangeDevice(c *fiber.Ctx) error {
 	lineUserID := profile.UserID
 
 	// Verify OTP
+	log.Printf("🔍 [REGISTER] lineUserID=%s, verifying OTP...", lineUserID)
 	if err := h.otpService.VerifyOTP(lineUserID, req.OTPCode); err != nil {
+		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 

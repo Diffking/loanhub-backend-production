@@ -30,12 +30,13 @@ type LIFFHandler struct {
 	db              *gorm.DB
 	lineService     *services.LINEService
 	otpService      *services.OTPService
+	smsService      *services.SMSService
 	jwtSecret       string
 	accessTokenExp  int
 	refreshTokenExp int
 }
 
-func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService) *LIFFHandler {
+func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService, smsService *services.SMSService) *LIFFHandler {
 	jwtSecret := os.Getenv("PROD_JWT_SECRET")
 	accessTokenExp := 1440
 	if exp := os.Getenv("ACCESS_TOKEN_EXPIRY"); exp != "" {
@@ -53,6 +54,7 @@ func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *
 		db:              db,
 		lineService:     lineService,
 		otpService:      otpService,
+		smsService:      smsService,
 		jwtSecret:       jwtSecret,
 		accessTokenExp:  accessTokenExp,
 		refreshTokenExp: refreshTokenExp,
@@ -194,7 +196,7 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 
 	// ตรวจเลขสมาชิกในระบบ flommast
 	var mastMembNo, mastMobile, mastCardID string
-	row := h.db.Raw("SELECT MAST_MEMB_NO, MAST_MOBILE, COALESCE(MAST_CARD_ID, '') FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
+	row := h.db.Raw("SELECT MAST_MEMB_NO, MAST_MOBILE, COALESCE(mast_card_id, '') FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
 	err = row.Scan(&mastMembNo, &mastMobile, &mastCardID)
 	if err != nil || mastMembNo == "" {
 		return response.BadRequest(c, "ไม่พบเลขสมาชิกนี้ในระบบ")
@@ -365,7 +367,7 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 
 	// ตรวจเลขสมาชิกใน flommast
 	var mastMembNo, fullName, deptName, stsTypeDesc, mastMobile, mastCardID string
-	row := h.db.Raw("SELECT MAST_MEMB_NO, Full_Name, DEPT_NAME, STS_TYPE_DESC, MAST_MOBILE, COALESCE(MAST_CARD_ID, '') FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
+	row := h.db.Raw("SELECT MAST_MEMB_NO, Full_Name, DEPT_NAME, STS_TYPE_DESC, MAST_MOBILE, COALESCE(mast_card_id, '') FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
 	err = row.Scan(&mastMembNo, &fullName, &deptName, &stsTypeDesc, &mastMobile, &mastCardID)
 	if err != nil || mastMembNo == "" {
 		return response.BadRequest(c, "ไม่พบเลขสมาชิกนี้ในระบบ")

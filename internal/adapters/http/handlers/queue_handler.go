@@ -164,6 +164,33 @@ func (h *QueueHandler) TrackTicket(c *fiber.Ctx) error {
 }
 
 // ============================================================
+// DELETE /api/v1/queue/ticket/:id — ยกเลิกคิว Walk-in
+// ============================================================
+func (h *QueueHandler) CancelTicket(c *fiber.Ctx) error {
+	userID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return response.Unauthorized(c, "User not authenticated")
+	}
+
+	ticketID, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil {
+		return response.BadRequest(c, "Invalid ticket ID")
+	}
+
+	if err := h.queueService.CancelWalkin(uint(ticketID), userID); err != nil {
+		switch err {
+		case services.ErrTicketNotFound:
+			return response.NotFound(c, "Ticket not found")
+		case services.ErrInvalidTicketStatus:
+			return response.BadRequest(c, "Ticket is not in WAITING status")
+		default:
+			return response.InternalServerError(c, "Failed to cancel ticket")
+		}
+	}
+	return response.Success(c, "Ticket cancelled", nil)
+}
+
+// ============================================================
 // Phase 4: GET /api/v1/queue/events — SSE real-time สำหรับ user
 // ============================================================
 func (h *QueueHandler) SSEEvents(c *fiber.Ctx) error {

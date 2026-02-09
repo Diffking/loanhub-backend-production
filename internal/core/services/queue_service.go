@@ -813,6 +813,43 @@ func (s *QueueService) CreateBooking(userID uint, input *BookingInput) (*WalkinR
 	}, nil
 }
 
+// CancelWalkin cancels a walk-in ticket
+func (s *QueueService) CancelWalkin(ticketID uint, userID uint) error {
+	ticket, err := s.queueRepo.GetTicketByID(ticketID)
+	if err != nil {
+		return ErrTicketNotFound
+	}
+
+	// Verify ownership
+	if ticket.UserID != userID {
+		return ErrTicketNotFound
+	}
+	if ticket.Status != "WAITING" {
+		return ErrInvalidTicketStatus
+	}
+
+	now := time.Now()
+	updates := map[string]interface{}{
+		"status":       "CANCELLED",
+		"completed_at": now,
+	}
+	if err := s.queueRepo.UpdateTicketStatus(ticketID, updates); err != nil {
+		return err
+	}
+
+	log.Printf("✅ Walk-in %s cancelled by user %d", ticket.TicketNumber, userID)
+
+	// SSE broadcast
+	if s.notify() != nil {
+		s.notify().NotifyQueueUpdate(ticket.BranchID, "queue_update", map[string]interface{}{
+			"action":        "cancel",
+			"ticket_number": ticket.TicketNumber,
+		})
+	}
+
+	return nil
+}
+
 // CancelBooking cancels a booking ticket
 func (s *QueueService) CancelBooking(ticketID uint, userID uint) error {
 	ticket, err := s.queueRepo.GetTicketByID(ticketID)

@@ -360,6 +360,9 @@ func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 	// Track by ticket number
 	router.Get("/track/:ticket_number", handler.TrackTicket)
 
+	// Cancel ticket (walk-in)
+	router.Delete("/ticket/:id", handler.CancelTicket)
+
 	// Phase 4: SSE real-time events
 	router.Get("/events", handler.SSEEvents)
 

@@ -26,12 +26,17 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 			}
 		}
 
-		// 3. No token found
+		// 3. If not in header, try query param ?token= (for SSE EventSource)
+		if accessToken == "" {
+			accessToken = c.Query("token")
+		}
+
+		// 4. No token found
 		if accessToken == "" {
 			return response.Unauthorized(c, "Access token required")
 		}
 
-		// 4. Validate token
+		// 5. Validate token
 		claims, err := jwt.ValidateAccessToken(accessToken, cfg.JWT.Secret)
 		if err != nil {
 			if err == jwt.ErrTokenExpired {
@@ -40,7 +45,7 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 			return response.Unauthorized(c, "Invalid access token")
 		}
 
-		// 5. Set user info in context
+		// 6. Set user info in context
 		c.Locals("userID", claims.UserID)
 		c.Locals("membNo", claims.MembNo)
 		c.Locals("username", claims.Username)
@@ -93,6 +98,11 @@ func OptionalAuth(cfg *config.Config) fiber.Handler {
 			if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 				accessToken = strings.TrimPrefix(authHeader, "Bearer ")
 			}
+		}
+
+		// If not in header, try query param ?token= (for SSE EventSource)
+		if accessToken == "" {
+			accessToken = c.Query("token")
 		}
 
 		// If token exists, validate and set user info

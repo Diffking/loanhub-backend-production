@@ -55,6 +55,21 @@ func (r *QueueRepository) GetServiceTypeByID(id uint) (*models.ServiceType, erro
 	return &st, err
 }
 
+// GetServiceTypesByBranch returns active service types that have counters in the given branch
+func (r *QueueRepository) GetServiceTypesByBranch(branchID uint) ([]models.ServiceType, error) {
+	var types []models.ServiceType
+	err := r.db.
+		Where("is_active = ? AND id IN (?)",
+			true,
+			r.db.Model(&models.ServiceCounter{}).
+				Select("DISTINCT service_type_id").
+				Where("branch_id = ? AND is_active = ?", branchID, true),
+		).
+		Order("display_order ASC").
+		Find(&types).Error
+	return types, err
+}
+
 // ============================================================
 // ServiceCounter Queries
 // ============================================================

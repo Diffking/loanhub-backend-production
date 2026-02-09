@@ -353,6 +353,7 @@ func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 	router.Post("/walkin", handler.CreateWalkin)
 
 	// My tickets
+		router.Post("/ticket", handler.CreateWalkin)
 	router.Get("/my-tickets", handler.GetMyTickets)
 	router.Get("/my-tickets/:id", handler.GetMyTicketByID)
 

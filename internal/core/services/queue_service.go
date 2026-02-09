@@ -29,6 +29,24 @@ var (
 	ErrBookingNotWaiting   = errors.New("booking is not in WAITING status")
 )
 
+// Bangkok timezone for date calculations
+var bangkokLoc *time.Location
+
+func init() {
+	var err error
+	bangkokLoc, err = time.LoadLocation("Asia/Bangkok")
+	if err != nil {
+		log.Printf("⚠️ Failed to load Asia/Bangkok timezone, using UTC+7 offset")
+		bangkokLoc = time.FixedZone("ICT", 7*60*60)
+	}
+}
+
+// bangkokToday returns today's date at midnight in Bangkok timezone
+func bangkokToday() time.Time {
+	now := time.Now().In(bangkokLoc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, bangkokLoc)
+}
+
 // QueueService handles queue business logic
 type QueueService struct {
 	queueRepo     *repositories.QueueRepository
@@ -88,7 +106,7 @@ func (s *QueueService) CreateWalkin(userID uint, input *WalkinInput) (*WalkinRes
 	}
 
 	// 3. Check duplicate active ticket
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	existing, err := s.queueRepo.GetActiveTicketByUser(userID, input.BranchID, input.ServiceTypeID, today)
 	if err != nil {
 		return nil, err
@@ -154,7 +172,7 @@ func (s *QueueService) CreateWalkin(userID uint, input *WalkinInput) (*WalkinRes
 
 // GetMyTicketsToday returns all tickets for a user today
 func (s *QueueService) GetMyTicketsToday(userID uint) ([]models.QueueTicket, error) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	return s.queueRepo.GetMyTicketsToday(userID, today)
 }
 
@@ -169,7 +187,7 @@ func (s *QueueService) GetTicketByID(ticketID uint) (*models.QueueTicket, error)
 
 // TrackTicket returns ticket info + queue position by ticket number
 func (s *QueueService) TrackTicket(ticketNumber string) (*WalkinResponse, error) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	ticket, err := s.queueRepo.GetTicketByNumber(ticketNumber, today)
 	if err != nil {
 		return nil, ErrTicketNotFound
@@ -214,7 +232,7 @@ func (s *QueueService) GetBranchServices(branchID uint) (map[string]interface{},
 		return nil, ErrBranchNotFound
 	}
 
-	serviceTypes, _ := s.queueRepo.GetActiveServiceTypes()
+	serviceTypes, _ := s.queueRepo.GetServiceTypesByBranch(branchID)
 	counters, _ := s.queueRepo.GetCountersByBranch(branchID)
 
 	return map[string]interface{}{
@@ -231,7 +249,7 @@ func (s *QueueService) GetBranchStatus(branchID uint) (map[string]interface{}, e
 		return nil, ErrBranchNotFound
 	}
 
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	statusMap, _ := s.queueRepo.GetBranchQueueStatus(branchID, today)
 	counters, _ := s.queueRepo.GetCountersByBranch(branchID)
 
@@ -355,7 +373,7 @@ func (s *QueueService) CallNextTicket(counterID uint, calledByUserID uint) (*mod
 	}
 
 	// 2. Check if counter already has an active ticket
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	serving, err := s.queueRepo.GetCurrentServingByCounter(counterID, today)
 	if err != nil {
 		return nil, err
@@ -645,7 +663,7 @@ func (s *QueueService) GetAdminDashboard(branchID uint) (*DashboardResponse, err
 		return nil, ErrBranchNotFound
 	}
 
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	statusMap, _ := s.queueRepo.GetBranchQueueStatus(branchID, today)
 	waitingList, _ := s.queueRepo.GetWaitingTicketsByBranch(branchID, today)
 	counters, _ := s.queueRepo.GetCountersByBranch(branchID)
@@ -668,7 +686,7 @@ func (s *QueueService) GetAdminDashboard(branchID uint) (*DashboardResponse, err
 
 // GetQueueHistory returns completed tickets for a branch today
 func (s *QueueService) GetQueueHistory(branchID uint) ([]models.QueueTicket, error) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	return s.queueRepo.GetCompletedTicketsByBranch(branchID, today)
 }
 
@@ -877,7 +895,7 @@ func (s *QueueService) CheckinBooking(ticketID uint) (*models.QueueTicket, error
 
 // GetBookingsByBranch returns all booking tickets for a branch today (admin)
 func (s *QueueService) GetBookingsByBranch(branchID uint) ([]models.QueueTicket, error) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 	return s.queueRepo.GetBookingsByBranch(branchID, today)
 }
 
@@ -988,7 +1006,7 @@ func (s *QueueService) GetDisplayData(branchID uint) (*DisplayData, error) {
 		return nil, ErrBranchNotFound
 	}
 
-	today := time.Now().Truncate(24 * time.Hour)
+	today := bangkokToday()
 
 	// Get currently calling/serving tickets
 	callingTickets, _ := s.queueRepo.GetCurrentCallingTickets(branchID, today)

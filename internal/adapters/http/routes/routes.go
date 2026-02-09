@@ -90,11 +90,12 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	lineHandler := handlers.NewLINEHandler(db)
 
 	// ============================================================
-	// LIFF Handler v2 - รับ lineService + otpService
+	// 🆕 LIFF Handler v3 - รับ lineService + otpService + smsService
 	// ============================================================
 	lineService := lineHandler.GetLINEService()
 	otpService := services.NewOTPService(db)
-	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService)
+	smsService := services.NewSMSService(lineService) // 🆕 SMS Service
+	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService) // 🆕 เพิ่ม smsService
 
 	// v2.2.2: Mobile Handler (Aggregated APIs)
 	mobileHandler := handlers.NewMobileHandler(
@@ -353,7 +354,7 @@ func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 	router.Post("/walkin", handler.CreateWalkin)
 
 	// My tickets
-		router.Post("/ticket", handler.CreateWalkin)
+	router.Post("/ticket", handler.CreateWalkin)
 	router.Get("/my-tickets", handler.GetMyTickets)
 	router.Get("/my-tickets/:id", handler.GetMyTicketByID)
 

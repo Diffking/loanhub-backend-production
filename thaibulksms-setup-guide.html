@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>คู่มือสมัคร ThaiBulkSMS API - EasyLoan</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --border: #1e2d4a;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --accent3: #34d399;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --radius: 12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'IBM Plex Sans Thai', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 60px 20px 50px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 50%, rgba(56,189,248,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 50%, rgba(129,140,248,0.06) 0%, transparent 50%);
+    animation: float 20s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(-20px, 10px); }
+  }
+  .header h1 {
+    font-size: 2.2em;
+    font-weight: 700;
+    position: relative;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .header .subtitle {
+    color: var(--text2);
+    font-size: 1.05em;
+    position: relative;
+  }
+  .badge-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    position: relative;
+  }
+  .badge {
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.8em;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .badge.free { border-color: #34d39955; color: var(--accent3); }
+  .badge.api { border-color: #38bdf855; color: var(--accent); }
+  .badge.otp { border-color: #818cf855; color: var(--accent2); }
+
+  /* Discovery box */
+  .discovery {
+    background: linear-gradient(135deg, rgba(129,140,248,0.1), rgba(56,189,248,0.05));
+    border: 1px solid rgba(129,140,248,0.2);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin: 30px 0 40px;
+  }
+  .discovery h3 {
+    color: var(--accent2);
+    font-size: 1.05em;
+    margin-bottom: 10px;
+  }
+  .discovery p { color: var(--text2); font-size: 0.92em; }
+
+  /* API comparison */
+  .api-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0 40px;
+  }
+  @media (max-width: 640px) {
+    .api-compare { grid-template-columns: 1fr; }
+  }
+  .api-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    position: relative;
+    transition: border-color 0.3s;
+  }
+  .api-card:hover { border-color: var(--accent); }
+  .api-card.recommended {
+    border-color: var(--accent3);
+    box-shadow: 0 0 30px rgba(52,211,153,0.08);
+  }
+  .api-card.recommended::after {
+    content: '✅ แนะนำ';
+    position: absolute;
+    top: -10px;
+    right: 16px;
+    background: var(--accent3);
+    color: #0a0e17;
+    padding: 2px 12px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    font-weight: 600;
+  }
+  .api-card h4 {
+    font-size: 1.1em;
+    margin-bottom: 6px;
+  }
+  .api-card .api-type { color: var(--text3); font-size: 0.82em; margin-bottom: 14px; }
+  .api-card ul { list-style: none; }
+  .api-card li {
+    padding: 4px 0;
+    font-size: 0.88em;
+    color: var(--text2);
+    padding-left: 20px;
+    position: relative;
+  }
+  .api-card li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--text3);
+  }
+
+  /* Steps */
+  .step-section { margin: 50px 0; }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .step-num {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.1em;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: var(--bg);
+  }
+  .step-title {
+    font-size: 1.25em;
+    font-weight: 600;
+  }
+  .step-content {
+    margin-left: 60px;
+  }
+  .step-content p { color: var(--text2); margin-bottom: 14px; font-size: 0.92em; }
+
+  /* URL box */
+  .url-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 14px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+  }
+  .url-box .icon { font-size: 1.2em; }
+  .url-box a {
+    color: var(--accent);
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .url-box a:hover { text-decoration: underline; }
+
+  /* Info list */
+  .info-list {
+    display: grid;
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .info-item {
+    display: flex;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.9em;
+  }
+  .info-item .emoji { font-size: 1.1em; flex-shrink: 0; }
+  .info-item .label { color: var(--text2); }
+  .info-item strong { color: var(--text); }
+
+  /* Code block */
+  .code-block {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 14px 0;
+    overflow-x: auto;
+    position: relative;
+  }
+  .code-block .lang-tag {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 0.7em;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .code-block pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82em;
+    line-height: 1.7;
+    color: var(--text2);
+  }
+  .code-block .comment { color: #6a737d; }
+  .code-block .key { color: #79c0ff; }
+  .code-block .string { color: #a5d6ff; }
+  .code-block .value { color: #7ee787; }
+  .code-block .warn-val { color: #ffa657; }
+
+  /* Alert boxes */
+  .alert {
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9em;
+    border-left: 3px solid;
+  }
+  .alert.info { background: rgba(56,189,248,0.06); border-color: var(--accent); }
+  .alert.warn { background: rgba(245,158,11,0.06); border-color: var(--warn); }
+  .alert.success { background: rgba(52,211,153,0.06); border-color: var(--accent3); }
+  .alert.danger { background: rgba(239,68,68,0.06); border-color: var(--danger); }
+  .alert .alert-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .alert.info .alert-title { color: var(--accent); }
+  .alert.warn .alert-title { color: var(--warn); }
+  .alert.success .alert-title { color: var(--accent3); }
+  .alert.danger .alert-title { color: var(--danger); }
+  .alert p { color: var(--text2); }
+
+  /* Screenshot placeholder */
+  .screenshot {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    margin: 14px 0;
+    color: var(--text3);
+    font-size: 0.85em;
+  }
+  .screenshot .ss-title { font-size: 1.1em; margin-bottom: 4px; color: var(--text2); }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 20px 0;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 0.88em;
+    color: var(--text2);
+  }
+  .flow-step:first-child { border-radius: 8px 8px 0 0; }
+  .flow-step:last-child { border-radius: 0 0 8px 8px; }
+  .flow-step .flow-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .flow-arrow {
+    text-align: center;
+    color: var(--text3);
+    font-size: 0.8em;
+    padding: 2px 0;
+  }
+
+  /* Pricing */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 14px 0;
+  }
+  @media (max-width: 640px) {
+    .pricing-grid { grid-template-columns: 1fr; }
+  }
+  .price-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .price-card .price {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .price-card .price-unit { color: var(--text3); font-size: 0.8em; }
+  .price-card .price-label { color: var(--text2); font-size: 0.82em; margin-top: 4px; }
+
+  /* Env block */
+  .env-block {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 14px 0;
+  }
+  .env-header {
+    background: var(--surface2);
+    padding: 8px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78em;
+    color: var(--text3);
+    border-bottom: 1px solid var(--border);
+  }
+  .env-body {
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82em;
+    line-height: 2;
+  }
+  .env-line { display: flex; }
+  .env-key { color: #79c0ff; }
+  .env-eq { color: var(--text3); }
+  .env-val { color: #7ee787; }
+  .env-placeholder { color: #ffa657; font-style: italic; }
+  .env-comment { color: #6a737d; }
+
+  /* Divider */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+
+  /* Checklist */
+  .checklist {
+    margin: 14px 0;
+    display: grid;
+    gap: 8px;
+  }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.88em;
+    color: var(--text2);
+  }
+  .check-box {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 2px solid var(--text3);
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>📱 คู่มือสมัคร ThaiBulkSMS API</h1>
+    <div class="subtitle">สำหรับระบบ OTP ของ EasyLoan — สหกรณ์ SPSC</div>
+    <div class="badge-row">
+      <span class="badge free">🎁 ทดลองฟรี 20 เครดิต</span>
+      <span class="badge api">⚡ เชื่อม API ใน 5 นาที</span>
+      <span class="badge otp">🔐 OTP API สำเร็จรูป</span>
+    </div>
+  </div>
+
+  <!-- Discovery -->
+  <div class="discovery">
+    <h3>💡 สิ่งที่ค้นพบจาก API Documentation</h3>
+    <p>
+      ThaiBulkSMS มี <strong style="color:var(--accent);">2 วิธี</strong> ในการทำ OTP —
+      เราสามารถเลือกใช้ <strong style="color:var(--accent3);">OTP API สำเร็จรูป</strong> ที่ ThaiBulkSMS จัดการ OTP ให้ทั้งหมด
+      หรือใช้ <strong>SMS API</strong> ส่งข้อความเอง (ที่เราทำไว้ในโค้ดก่อนหน้า) ก็ได้
+    </p>
+  </div>
+
+  <!-- API Comparison -->
+  <h3 style="font-size:1.1em; margin-bottom:4px;">เปรียบเทียบ 2 วิธี</h3>
+  <p style="color:var(--text3); font-size:0.85em; margin-bottom:12px;">เลือกวิธีที่เหมาะกับโปรเจค</p>
+
+  <div class="api-compare">
+    <div class="api-card">
+      <h4>📩 SMS API</h4>
+      <div class="api-type">ส่งข้อความ SMS เอง</div>
+      <ul>
+        <li>เราสร้าง OTP เอง (ทำแล้ว)</li>
+        <li>ส่ง SMS ด้วย message ที่กำหนดเอง</li>
+        <li>Endpoint: <code>api-v2.thaibulksms.com/sms</code></li>
+        <li>ใช้ Basic Auth (api-key : api-secret)</li>
+        <li>กำหนดชื่อผู้ส่ง (Sender) ได้</li>
+        <li>เหมาะกับ: ระบบที่มี OTP logic เอง</li>
+      </ul>
+    </div>
+    <div class="api-card recommended">
+      <h4>🔐 OTP API</h4>
+      <div class="api-type">ThaiBulkSMS จัดการ OTP ให้</div>
+      <ul>
+        <li>TBS สร้าง + ส่ง OTP ให้อัตโนมัติ</li>
+        <li>TBS verify OTP ให้ด้วย</li>
+        <li>Endpoint: <code>otp.thaibulksms.com/v2/otp/*</code></li>
+        <li>ใช้ Basic Auth เหมือนกัน</li>
+        <li>ง่ายกว่า — ลด code ที่ต้องดูแลเอง</li>
+        <li>เหมาะกับ: ใช้งาน OTP อย่างเดียว</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="alert info">
+    <div class="alert-title">ℹ️ ข้อแนะนำ</div>
+    <p>โค้ดที่เราทำไว้ใช้ <strong>SMS API</strong> (สร้าง OTP เอง + ส่ง SMS) ซึ่งเป็นวิธีที่ยืดหยุ่นกว่า
+      เพราะเราควบคุม OTP logic ทั้งหมดเอง สามารถ fallback ส่งผ่าน LINE ได้ และไม่ต้อง refactor code ใหม่ทั้งหมด
+      — <strong>ใช้ SMS API ต่อไปได้เลย</strong></p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ============ STEP 1 ============ -->
+  <div class="step-section">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">สมัครสมาชิก ThaiBulkSMS</div>
+    </div>
+    <div class="step-content">
+      <p>ไปที่หน้าลงทะเบียน แล้วกรอกข้อมูลให้ครบ จะได้ <strong>เครดิตฟรี 20 SMS</strong> ทันที (Standard 10 + Corporate 10)</p>
+
+      <div class="url-box">
+        <span class="icon">🌐</span>
+        <a href="https://account.thaibulksms.com/register/" target="_blank">https://account.thaibulksms.com/register/</a>
+      </div>
+
+      <div class="info-list">
+        <div class="info-item">
+          <span class="emoji">📧</span>
+          <span class="label">กรอก <strong>อีเมล</strong> สำหรับรับ API Key</span>
+        </div>
+        <div class="info-item">
+          <span class="emoji">📱</span>
+          <span class="label">กรอก <strong>เบอร์โทร</strong> เพื่อยืนยันตัวตน</span>
+        </div>
+        <div class="info-item">
+          <span class="emoji">🏢</span>
+          <span class="label">กรอก <strong>ชื่อองค์กร</strong> → สหกรณ์ออมทรัพย์ศูนย์การเรียนฯ จำกัด (หรือชื่อเต็ม)</span>
+        </div>
+        <div class="info-item">
+          <span class="emoji">🔑</span>
+          <span class="label">ตั้ง <strong>รหัสผ่าน</strong> สำหรับ login เข้า Console</span>
+        </div>
+      </div>
+
+      <div class="alert warn">
+        <div class="alert-title">⚠️ ข้อจำกัดบัญชีฟรี</div>
+        <p>บัญชีทดลองฟรี ส่ง SMS ได้เฉพาะ <strong>เบอร์ตัวเอง</strong> เท่านั้น!
+          ต้องซื้อแพ็กเกจถึงจะส่งไปเบอร์อื่นได้</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STEP 2 ============ -->
+  <div class="step-section">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">สร้าง API Key + API Secret</div>
+    </div>
+    <div class="step-content">
+      <p>หลัง login เข้า Console แล้ว ไปสร้าง API Key สำหรับเรียก API</p>
+
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <span>Login เข้า <strong>member.thaibulksms.com</strong></span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <span>ไปที่เมนู <strong>ตั้งค่า (Settings)</strong> → <strong>API Key</strong></span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <span>กด <strong>"สร้าง API Key"</strong></span>
+        </div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <span>ระบบจะแสดง <strong style="color:var(--accent);">API Key</strong> และ <strong style="color:var(--accent2);">API Secret</strong> — <strong style="color:var(--danger);">คัดลอกเก็บไว้ทันที!</strong></span>
+        </div>
+      </div>
+
+      <div class="alert danger">
+        <div class="alert-title">🚨 สำคัญมาก!</div>
+        <p><strong>API Secret จะแสดงครั้งเดียวตอนสร้าง</strong> — ถ้าลืมเก็บต้องสร้างใหม่
+          ให้คัดลอกทั้ง Key + Secret เก็บไว้ในที่ปลอดภัย</p>
+      </div>
+
+      <div class="screenshot">
+        <div class="ss-title">📸 หน้า API Key ใน Console</div>
+        จะเห็นตาราง: API Key | API Secret | สถานะ | วันที่สร้าง
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STEP 3 ============ -->
+  <div class="step-section">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">ตั้งค่า Sender Name (ชื่อผู้ส่ง)</div>
+    </div>
+    <div class="step-content">
+      <p>Sender Name คือชื่อที่จะแสดงเป็นผู้ส่ง SMS แทนเบอร์โทร เช่น "SPSC" หรือ "สหกรณ์"</p>
+
+      <div class="info-list">
+        <div class="info-item">
+          <span class="emoji">⏱️</span>
+          <span class="label">ระยะเวลาอนุมัติ: <strong>5-7 วันทำการ</strong></span>
+        </div>
+        <div class="info-item">
+          <span class="emoji">💰</span>
+          <span class="label">ต้องซื้อแพ็กเกจตั้งแต่ <strong>3,000 บาท</strong> ขึ้นไป</span>
+        </div>
+        <div class="info-item">
+          <span class="emoji">📝</span>
+          <span class="label">ระหว่างรอ สามารถใช้ Sender เริ่มต้น "<strong>SMS.</strong>" ได้เลย</span>
+        </div>
+      </div>
+
+      <div class="alert info">
+        <div class="alert-title">💡 Sender ที่แนะนำ</div>
+        <p>ตั้งชื่อ Sender เป็น <strong>"SPSC"</strong> หรือ <strong>"สหกรณ์"</strong>
+          เพื่อให้ผู้ใช้รู้ว่า SMS มาจากสหกรณ์จริง ไม่ใช่ spam
+          ระหว่างรออนุมัติ ใช้ "SMS." แทนได้</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STEP 4 ============ -->
+  <div class="step-section">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">ซื้อเครดิต SMS</div>
+    </div>
+    <div class="step-content">
+      <p>เลือกแพ็กเกจที่เหมาะกับการใช้งาน OTP (แนะนำ Standard สำหรับ OTP)</p>
+
+      <div class="pricing-grid">
+        <div class="price-card">
+          <div class="price">฿0.15</div>
+          <div class="price-unit">ต่อ SMS</div>
+          <div class="price-label">Standard<br>แพ็กเกจใหญ่</div>
+        </div>
+        <div class="price-card">
+          <div class="price">฿0.25</div>
+          <div class="price-unit">ต่อ SMS</div>
+          <div class="price-label">Standard<br>แพ็กเกจกลาง</div>
+        </div>
+        <div class="price-card">
+          <div class="price">฿0.50</div>
+          <div class="price-unit">ต่อ SMS</div>
+          <div class="price-label">Standard<br>แพ็กเกจเล็ก</div>
+        </div>
+      </div>
+
+      <div class="url-box">
+        <span class="icon">💰</span>
+        <a href="https://www.thaibulksms.com/pricing/" target="_blank">https://www.thaibulksms.com/pricing/</a>
+      </div>
+
+      <div class="alert success">
+        <div class="alert-title">💡 คำนวณค่าใช้จ่ายคร่าวๆ</div>
+        <p>ถ้ามีสมาชิก 500 คน × ใช้ OTP เฉลี่ย 2 ครั้ง/เดือน = <strong>1,000 SMS/เดือน</strong>
+          <br>→ ค่าใช้จ่ายประมาณ <strong>150-500 บาท/เดือน</strong> (ขึ้นกับแพ็กเกจ)</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STEP 5 ============ -->
+  <div class="step-section">
+    <div class="step-header">
+      <div class="step-num">5</div>
+      <div class="step-title">นำ API Key ใส่ .env บน VPS</div>
+    </div>
+    <div class="step-content">
+      <p>นำ API Key + Secret ที่ได้มาใส่ในไฟล์ <code>.env</code> ของ EasyLoan Backend</p>
+
+      <div class="env-block">
+        <div class="env-header">📄 .env — เพิ่มตัวแปรเหล่านี้</div>
+        <div class="env-body">
+          <div class="env-line"><span class="env-comment"># ========== SMS OTP Config ==========</span></div>
+          <br>
+          <div class="env-line">
+            <span class="env-key">SMS_PROVIDER</span><span class="env-eq">=</span><span class="env-val">thaibulksms</span>
+          </div>
+          <br>
+          <div class="env-line"><span class="env-comment"># จาก Step 2</span></div>
+          <div class="env-line">
+            <span class="env-key">SMS_API_KEY</span><span class="env-eq">=</span><span class="env-placeholder">paste_your_api_key_here</span>
+          </div>
+          <div class="env-line">
+            <span class="env-key">SMS_API_SECRET</span><span class="env-eq">=</span><span class="env-placeholder">paste_your_api_secret_here</span>
+          </div>
+          <br>
+          <div class="env-line"><span class="env-comment"># ชื่อผู้ส่ง (ใช้ "SMS." ก่อนถ้ายังไม่ได้จดทะเบียน)</span></div>
+          <div class="env-line">
+            <span class="env-key">SMS_SENDER</span><span class="env-eq">=</span><span class="env-val">SMS.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert warn">
+        <div class="alert-title">⚠️ อย่า commit API key ขึ้น GitHub!</div>
+        <p>ตรวจสอบว่า <code>.env</code> อยู่ใน <code>.gitignore</code> แล้ว
+          ไม่เช่นนั้น key จะหลุดไปบน public repository</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STEP 6 ============ -->
+  <div class="step-section">
+    <div class="step-header">
+      <div class="step-num">6</div>
+      <div class="step-title">ทดสอบ API</div>
+    </div>
+    <div class="step-content">
+      <p>ทดสอบว่า API Key ใช้งานได้โดยเช็คเครดิตคงเหลือ</p>
+
+      <div class="code-block">
+        <span class="lang-tag">BASH / cURL</span>
+        <pre><span class="comment"># ทดสอบเช็คเครดิต (ใช้ Basic Auth)</span>
+<span class="key">curl</span> -X GET <span class="string">https://api-v2.thaibulksms.com/credit</span> \
+  -u <span class="warn-val">"YOUR_API_KEY:YOUR_API_SECRET"</span>
+
+<span class="comment"># ถ้าสำเร็จจะได้:</span>
+<span class="comment"># {"data":{"remaining_credit":20,"credit_type":"standard"}}</span></pre>
+      </div>
+
+      <div class="code-block">
+        <span class="lang-tag">BASH / ทดสอบส่ง SMS</span>
+        <pre><span class="comment"># ทดสอบส่ง SMS (บัญชีฟรี ส่งได้เฉพาะเบอร์ตัวเอง)</span>
+<span class="key">curl</span> -X POST <span class="string">https://api-v2.thaibulksms.com/sms</span> \
+  -u <span class="warn-val">"YOUR_API_KEY:YOUR_API_SECRET"</span> \
+  -H <span class="string">"Content-Type: application/x-www-form-urlencoded"</span> \
+  -d <span class="string">"msisdn=<span class="warn-val">66891234567</span>&message=Test OTP: 123456&sender=SMS."</span>
+
+<span class="comment"># เบอร์ใช้รูปแบบ 66XXXXXXXXX (ไม่มี +)</span></pre>
+      </div>
+
+      <div class="alert info">
+        <div class="alert-title">📌 รูปแบบ Authentication</div>
+        <p>ThaiBulkSMS API v2 ใช้ <strong>HTTP Basic Auth</strong>
+          โดยใส่ <code>api-key</code> เป็น username และ <code>api-secret</code> เป็น password
+          <br>→ โค้ด <code>sms_service.go</code> ที่ทำไว้ ต้องแก้ให้ใช้ <strong>Basic Auth</strong> แทน JSON body</p>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Important Fix Note -->
+  <div class="alert danger" style="margin:30px 0;">
+    <div class="alert-title">🔧 ต้องแก้โค้ด sms_service.go!</div>
+    <p>จากที่ค้นพบใน API docs — ThaiBulkSMS API v2 ใช้:</p>
+    <ul style="margin: 10px 0 0 20px; color: var(--text2); font-size: 0.92em; line-height: 2;">
+      <li>✅ <strong>Basic Auth</strong> (api-key เป็น username, api-secret เป็น password)</li>
+      <li>✅ <strong>Content-Type: application/x-www-form-urlencoded</strong> (ไม่ใช่ JSON)</li>
+      <li>✅ Endpoint: <code>https://api-v2.thaibulksms.com/sms</code></li>
+      <li>✅ Parameters: <code>msisdn</code>, <code>message</code>, <code>sender</code></li>
+    </ul>
+    <p style="margin-top:10px;"><strong>→ แจ้งผมเพื่อแก้โค้ดให้ตรงกับ API จริง</strong></p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Summary Checklist -->
+  <h3 style="font-size:1.2em; margin-bottom:16px;">✅ Checklist สิ่งที่ต้องทำ</h3>
+
+  <div class="checklist">
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>สมัครสมาชิกที่ <strong>account.thaibulksms.com/register</strong></span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>Login เข้า Console → สร้าง <strong>API Key + Secret</strong></span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>ทดสอบ API ด้วย cURL (เช็คเครดิต + ส่ง SMS เบอร์ตัวเอง)</span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>ซื้อแพ็กเกจ SMS (ตั้งแต่ 3,000 บาท ถ้าต้องการ Sender Name)</span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>จดทะเบียน <strong>Sender Name "SPSC"</strong> (รอ 5-7 วัน)</span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>ใส่ API Key ใน <strong>.env</strong> บน VPS</span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>แจ้ง Claude → <strong>แก้ sms_service.go ให้ใช้ Basic Auth + form-urlencoded</strong></span>
+    </div>
+    <div class="check-item">
+      <div class="check-box"></div>
+      <span>Deploy + ทดสอบ OTP กับเบอร์จริง</span>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

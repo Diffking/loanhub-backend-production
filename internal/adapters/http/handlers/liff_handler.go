@@ -18,24 +18,27 @@ import (
 )
 
 // ============================================================
-// LIFF Handler v2 - เพิ่ม Security Features
+// LIFF Handler v3 - SMS OTP Security Upgrade
 // ✅ LINE Token Verification (ป้องกันปลอม LINE User ID)
 // ✅ Device ID Binding (ผูก 1 คน = 1 เครื่อง)
 // ✅ Network Type Check (บังคับ Cellular เฉพาะ Register)
 // ✅ Login อนุญาต WiFi (มี LINE Token + Device ID ป้องกัน)
 // ✅ OTP Phone Verification (ยืนยันเบอร์โทร)
+// 🆕 SMS OTP (ส่ง OTP ผ่าน SMS แทน LINE)
+// 🆕 ไม่ส่ง OTP กลับใน response (ป้องกันช่องโหว่)
 // ============================================================
 
 type LIFFHandler struct {
 	db              *gorm.DB
 	lineService     *services.LINEService
 	otpService      *services.OTPService
+	smsService      *services.SMSService // 🆕 SMS Service
 	jwtSecret       string
 	accessTokenExp  int
 	refreshTokenExp int
 }
 
-func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService) *LIFFHandler {
+func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService, smsService *services.SMSService) *LIFFHandler {
 	jwtSecret := os.Getenv("PROD_JWT_SECRET")
 	accessTokenExp := 1440
 	if exp := os.Getenv("ACCESS_TOKEN_EXPIRY"); exp != "" {
@@ -53,6 +56,7 @@ func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *
 		db:              db,
 		lineService:     lineService,
 		otpService:      otpService,
+		smsService:      smsService, // 🆕
 		jwtSecret:       jwtSecret,
 		accessTokenExp:  accessTokenExp,
 		refreshTokenExp: refreshTokenExp,
@@ -65,26 +69,26 @@ func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *
 
 type CheckLineUserRequest struct {
 	LineUserID      string `json:"line_user_id" validate:"required"`
-	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม: ต้องส่ง LINE access token มาด้วย
+	LineAccessToken string `json:"line_access_token" validate:"required"`
 }
 
 type LIFFRegisterRequest struct {
-	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม
+	LineAccessToken string `json:"line_access_token" validate:"required"`
 	LineDisplayName string `json:"line_display_name"`
 	LinePictureURL  string `json:"line_picture_url"`
 	MembNo          string `json:"memb_no" validate:"required"`
-	Phone           string `json:"phone" validate:"required"`    // ✅ เพิ่ม: เบอร์โทร
-	OTPCode         string `json:"otp_code" validate:"required"` // ✅ เพิ่ม: OTP ที่ได้รับ
-	DeviceID        string `json:"device_id" validate:"required"` // ✅ เพิ่ม: Device ID
-	NetworkType     string `json:"network_type"`                  // ✅ เพิ่ม: wifi / cellular
+	Phone           string `json:"phone" validate:"required"`
+	OTPCode         string `json:"otp_code" validate:"required"`
+	DeviceID        string `json:"device_id" validate:"required"`
+	NetworkType     string `json:"network_type"`
 }
 
 type LIFFLoginRequest struct {
-	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม
+	LineAccessToken string `json:"line_access_token" validate:"required"`
 	LineDisplayName string `json:"line_display_name"`
 	LinePictureURL  string `json:"line_picture_url"`
-	DeviceID        string `json:"device_id" validate:"required"` // ✅ เพิ่ม
-	NetworkType     string `json:"network_type"`                  // ✅ เพิ่ม
+	DeviceID        string `json:"device_id" validate:"required"`
+	NetworkType     string `json:"network_type"`
 }
 
 // OTP Request
@@ -146,17 +150,20 @@ func (h *LIFFHandler) CheckLineUser(c *fiber.Ctx) error {
 	}
 
 	return response.Success(c, "ตรวจสอบสำเร็จ", fiber.Map{
-		"exists":        count > 0,
-		"line_user_id":  lineUserID,
-		"display_name":  profile.DisplayName,
-		"has_device":    registeredDeviceID != nil && *registeredDeviceID != "",
+		"exists":       count > 0,
+		"line_user_id": lineUserID,
+		"display_name": profile.DisplayName,
+		"has_device":   registeredDeviceID != nil && *registeredDeviceID != "",
 	})
 }
 
 // ============================================================
 // 2. Request OTP - ขอ OTP ส่งไปที่เบอร์โทร
 // ============================================================
-// @Summary Request OTP
+// 🆕 v3: ส่ง OTP ผ่าน SMS (SMSMKT) แทน LINE
+//         ไม่ส่ง OTP กลับใน response อีกต่อไป
+// ============================================================
+// @Summary Request OTP via SMS
 // @Tags LIFF
 // @Accept json
 // @Produce json
@@ -207,32 +214,36 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 	}
 
 	// ============================================================
-	// 📱 ส่ง OTP ผ่าน SMS
-	// TODO: เชื่อมกับ SMS Provider จริง (เช่น ThaiBulkSMS, Twilio, etc.)
-	// ตอนนี้ส่งผ่าน LINE push message แทน (สำหรับ dev/test)
+	// 🆕 v3: ส่ง OTP ผ่าน SMS (SMSMKT)
+	// ถ้าไม่มี SMS provider → fallback ส่งผ่าน LINE อัตโนมัติ
 	// ============================================================
-	smsMessage := fmt.Sprintf("รหัส OTP ของคุณคือ: %s (หมดอายุใน 5 นาที) - สหกรณ์ SPSC", otpCode)
+	go func() {
+		if err := h.smsService.SendOTP(cleanPhone, otpCode, profile.UserID); err != nil {
+			log.Printf("❌ Failed to send OTP: %v", err)
+		}
+	}()
 
-	// ส่งผ่าน LINE message (ชั่วคราว - ควรเปลี่ยนเป็น SMS จริง)
-	channelAccessToken := os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
-	if channelAccessToken != "" {
-		go func() {
-			if err := h.lineService.SendPushMessage(profile.UserID, smsMessage, channelAccessToken); err != nil {
-				log.Printf("Failed to send OTP via LINE: %v", err)
-			}
-		}()
+	log.Printf("📱 OTP requested for member %s, phone %s (via %s)",
+		membNo, maskPhone(cleanPhone), h.smsService.GetProviderName())
+
+	// ============================================================
+	// 🔒 Security: ไม่ส่ง OTP กลับใน response อีกต่อไป
+	// OTP จะถูกส่งผ่าน SMS เท่านั้น
+	// ============================================================
+	responseData := fiber.Map{
+		"phone_masked": maskPhone(cleanPhone),
+		"expires_in":   300, // 5 minutes
+		"provider":     h.smsService.GetProviderName(),
 	}
 
-	// ⚠️ Production: ให้ใช้ SMS API จริง
-	// sendSMS(cleanPhone, smsMessage)
+	// 🧪 Dev mode เท่านั้น: ส่ง OTP กลับเพื่อทดสอบ
+	appMode := strings.TrimSpace(os.Getenv("APP_MODE"))
+	if appMode == "dev" {
+		responseData["otp_code"] = otpCode // ⚠️ เฉพาะ dev mode เท่านั้น!
+		responseData["_dev_warning"] = "OTP is included in response for dev/test only. This will be removed in production."
+	}
 
-	log.Printf("📱 OTP Generated for member %s, phone %s: %s", membNo, cleanPhone, otpCode)
-
-	return response.Success(c, "ส่ง OTP สำเร็จ", fiber.Map{
-		"phone_masked": maskPhone(cleanPhone),
-		"otp_code":     otpCode, // ✅ ส่ง OTP กลับให้ frontend แสดงในหน้าเว็บ (ไม่ต้องสลับไปดูใน LINE)
-		"expires_in":   300,     // 5 minutes
-	})
+	return response.Success(c, "ส่ง OTP สำเร็จ กรุณาตรวจสอบ SMS ที่เบอร์ "+maskPhone(cleanPhone), responseData)
 }
 
 // ============================================================

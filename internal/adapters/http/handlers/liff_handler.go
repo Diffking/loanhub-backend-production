@@ -18,27 +18,24 @@ import (
 )
 
 // ============================================================
-// LIFF Handler v3 - SMS OTP Security Upgrade
+// LIFF Handler v2 - เพิ่ม Security Features
 // ✅ LINE Token Verification (ป้องกันปลอม LINE User ID)
 // ✅ Device ID Binding (ผูก 1 คน = 1 เครื่อง)
 // ✅ Network Type Check (บังคับ Cellular เฉพาะ Register)
 // ✅ Login อนุญาต WiFi (มี LINE Token + Device ID ป้องกัน)
 // ✅ OTP Phone Verification (ยืนยันเบอร์โทร)
-// 🆕 SMS OTP (ส่ง OTP ผ่าน SMS แทน LINE)
-// 🆕 ไม่ส่ง OTP กลับใน response (ป้องกันช่องโหว่)
 // ============================================================
 
 type LIFFHandler struct {
 	db              *gorm.DB
 	lineService     *services.LINEService
 	otpService      *services.OTPService
-	smsService      *services.SMSService // 🆕 SMS Service
 	jwtSecret       string
 	accessTokenExp  int
 	refreshTokenExp int
 }
 
-func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService, smsService *services.SMSService) *LIFFHandler {
+func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService) *LIFFHandler {
 	jwtSecret := os.Getenv("PROD_JWT_SECRET")
 	accessTokenExp := 1440
 	if exp := os.Getenv("ACCESS_TOKEN_EXPIRY"); exp != "" {
@@ -56,7 +53,6 @@ func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *
 		db:              db,
 		lineService:     lineService,
 		otpService:      otpService,
-		smsService:      smsService, // 🆕
 		jwtSecret:       jwtSecret,
 		accessTokenExp:  accessTokenExp,
 		refreshTokenExp: refreshTokenExp,
@@ -69,26 +65,27 @@ func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *
 
 type CheckLineUserRequest struct {
 	LineUserID      string `json:"line_user_id" validate:"required"`
-	LineAccessToken string `json:"line_access_token" validate:"required"`
+	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม: ต้องส่ง LINE access token มาด้วย
 }
 
 type LIFFRegisterRequest struct {
-	LineAccessToken string `json:"line_access_token" validate:"required"`
+	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม
 	LineDisplayName string `json:"line_display_name"`
 	LinePictureURL  string `json:"line_picture_url"`
 	MembNo          string `json:"memb_no" validate:"required"`
-	Phone           string `json:"phone" validate:"required"`
-	OTPCode         string `json:"otp_code" validate:"required"`
-	DeviceID        string `json:"device_id" validate:"required"`
-	NetworkType     string `json:"network_type"`
+	Phone           string `json:"phone" validate:"required"`    // ✅ เพิ่ม: เบอร์โทร
+	CardLast4       string `json:"card_last4" validate:"required"` // ✅ เพิ่ม: เลขบัตรประชาชน 4 หลักสุดท้าย
+	OTPCode         string `json:"otp_code" validate:"required"` // ✅ เพิ่ม: OTP ที่ได้รับ
+	DeviceID        string `json:"device_id" validate:"required"` // ✅ เพิ่ม: Device ID
+	NetworkType     string `json:"network_type"`                  // ✅ เพิ่ม: wifi / cellular
 }
 
 type LIFFLoginRequest struct {
-	LineAccessToken string `json:"line_access_token" validate:"required"`
+	LineAccessToken string `json:"line_access_token" validate:"required"` // ✅ เพิ่ม
 	LineDisplayName string `json:"line_display_name"`
 	LinePictureURL  string `json:"line_picture_url"`
-	DeviceID        string `json:"device_id" validate:"required"`
-	NetworkType     string `json:"network_type"`
+	DeviceID        string `json:"device_id" validate:"required"` // ✅ เพิ่ม
+	NetworkType     string `json:"network_type"`                  // ✅ เพิ่ม
 }
 
 // OTP Request
@@ -96,6 +93,7 @@ type RequestOTPRequest struct {
 	LineAccessToken string `json:"line_access_token" validate:"required"`
 	MembNo          string `json:"memb_no" validate:"required"`
 	Phone           string `json:"phone" validate:"required"`
+	CardLast4       string `json:"card_last4" validate:"required"` // ✅ เพิ่ม: เลขบัตรประชาชน 4 หลักสุดท้าย
 }
 
 type VerifyOTPRequest struct {
@@ -150,20 +148,17 @@ func (h *LIFFHandler) CheckLineUser(c *fiber.Ctx) error {
 	}
 
 	return response.Success(c, "ตรวจสอบสำเร็จ", fiber.Map{
-		"exists":       count > 0,
-		"line_user_id": lineUserID,
-		"display_name": profile.DisplayName,
-		"has_device":   registeredDeviceID != nil && *registeredDeviceID != "",
+		"exists":        count > 0,
+		"line_user_id":  lineUserID,
+		"display_name":  profile.DisplayName,
+		"has_device":    registeredDeviceID != nil && *registeredDeviceID != "",
 	})
 }
 
 // ============================================================
 // 2. Request OTP - ขอ OTP ส่งไปที่เบอร์โทร
 // ============================================================
-// 🆕 v3: ส่ง OTP ผ่าน SMS (SMSMKT) แทน LINE
-//         ไม่ส่ง OTP กลับใน response อีกต่อไป
-// ============================================================
-// @Summary Request OTP via SMS
+// @Summary Request OTP
 // @Tags LIFF
 // @Accept json
 // @Produce json
@@ -180,6 +175,11 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 		return response.BadRequest(c, "กรุณาระบุข้อมูลให้ครบ")
 	}
 
+	// ✅ Validate เลขบัตรประชาชน 4 หลักสุดท้าย
+	if req.CardLast4 == "" || len(req.CardLast4) != 4 {
+		return response.BadRequest(c, "กรุณาระบุเลขบัตรประชาชน 4 หลักสุดท้าย")
+	}
+
 	// ✅ Verify LINE Token
 	profile, err := h.lineService.VerifyAndGetProfile(req.LineAccessToken)
 	if err != nil {
@@ -193,9 +193,9 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 	}
 
 	// ตรวจเลขสมาชิกในระบบ flommast
-	var mastMembNo, mastMobile string
-	row := h.db.Raw("SELECT MAST_MEMB_NO, MAST_MOBILE FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
-	err = row.Scan(&mastMembNo, &mastMobile)
+	var mastMembNo, mastMobile, mastCardID string
+	row := h.db.Raw("SELECT MAST_MEMB_NO, MAST_MOBILE, COALESCE(MAST_CARD_ID, '') FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
+	err = row.Scan(&mastMembNo, &mastMobile, &mastCardID)
 	if err != nil || mastMembNo == "" {
 		return response.BadRequest(c, "ไม่พบเลขสมาชิกนี้ในระบบ")
 	}
@@ -207,47 +207,56 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 		return response.BadRequest(c, "เบอร์โทรไม่ตรงกับข้อมูลสมาชิก")
 	}
 
+	// ✅ ตรวจเลขบัตรประชาชน 4 หลักสุดท้าย
+	cleanCardID := ""
+	for _, ch := range mastCardID {
+		if ch >= '0' && ch <= '9' {
+			cleanCardID += string(ch)
+		}
+	}
+	if len(cleanCardID) < 4 {
+		log.Printf("⚠️ [OTP] MAST_CARD_ID too short for member %s: '%s' → cleaned: '%s'", membNo, mastCardID, cleanCardID)
+		return response.BadRequest(c, "ข้อมูลบัตรประชาชนในระบบไม่สมบูรณ์ กรุณาติดต่อสหกรณ์")
+	}
+	dbCardLast4 := cleanCardID[len(cleanCardID)-4:]
+	if req.CardLast4 != dbCardLast4 {
+		log.Printf("🔍[OTP] Card last4 mismatch for member %s: input=%s, db=%s (raw='%s')", membNo, req.CardLast4, dbCardLast4, mastCardID)
+		return response.BadRequest(c, "เลขบัตรประชาชน 4 หลักสุดท้ายไม่ตรงกับข้อมูลสมาชิก")
+	}
+
 	// Generate OTP
 	otpCode, err := h.otpService.GenerateOTP(profile.UserID, cleanPhone)
 	if err != nil {
-		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
 	// ============================================================
-	// 🆕 v3: ส่ง OTP ผ่าน SMS (SMSMKT)
-	// ถ้าไม่มี SMS provider → fallback ส่งผ่าน LINE อัตโนมัติ
+	// 📱 ส่ง OTP ผ่าน SMS
+	// TODO: เชื่อมกับ SMS Provider จริง (เช่น ThaiBulkSMS, Twilio, etc.)
+	// ตอนนี้ส่งผ่าน LINE push message แทน (สำหรับ dev/test)
 	// ============================================================
-	go func() {
-		if err := h.smsService.SendOTP(cleanPhone, otpCode, profile.UserID); err != nil {
-			log.Printf("❌ Failed to send OTP: %v", err)
-		}
-	}()
+	smsMessage := fmt.Sprintf("รหัส OTP ของคุณคือ: %s (หมดอายุใน 5 นาที) - สหกรณ์ SPSC", otpCode)
 
-	log.Printf("📱 OTP requested for member %s, phone %s (via %s)",
-		membNo, maskPhone(cleanPhone), h.smsService.GetProviderName())
+	// ส่งผ่าน LINE message (ชั่วคราว - ควรเปลี่ยนเป็น SMS จริง)
+	channelAccessToken := os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
+	if channelAccessToken != "" {
+		go func() {
+			if err := h.lineService.SendPushMessage(profile.UserID, smsMessage, channelAccessToken); err != nil {
+				log.Printf("Failed to send OTP via LINE: %v", err)
+			}
+		}()
+	}
 
-	// ============================================================
-	// 🔒 Security: ไม่ส่ง OTP กลับใน response อีกต่อไป
-	// OTP จะถูกส่งผ่าน SMS เท่านั้น
-	// ============================================================
-	responseData := fiber.Map{
+	// ⚠️ Production: ให้ใช้ SMS API จริง
+	// sendSMS(cleanPhone, smsMessage)
+
+	log.Printf("📱 OTP Generated for member %s, phone %s: %s", membNo, cleanPhone, otpCode)
+
+	return response.Success(c, "ส่ง OTP สำเร็จ", fiber.Map{
 		"phone_masked": maskPhone(cleanPhone),
-		"expires_in":   300, // 5 minutes
-		"provider":     h.smsService.GetProviderName(),
-	}
-
-	// แสดง OTP เมื่อ dev mode หรือ LINE fallback
-	appMode := strings.TrimSpace(os.Getenv("APP_MODE"))
-	providerName := h.smsService.GetProviderName()
-	if appMode == "dev" || providerName == "line_fallback" {
-		responseData["otp_code"] = otpCode
-		if appMode == "dev" {
-			responseData["_dev_warning"] = "OTP included for dev/test only"
-		}
-	}
-
-	return response.Success(c, "ส่ง OTP สำเร็จ กรุณาตรวจสอบ SMS ที่เบอร์ "+maskPhone(cleanPhone), responseData)
+		"otp_code":     otpCode, // ✅ ส่ง OTP กลับให้ frontend แสดงในหน้าเว็บ (ไม่ต้องสลับไปดูใน LINE)
+		"expires_in":   300,     // 5 minutes
+	})
 }
 
 // ============================================================
@@ -278,7 +287,6 @@ func (h *LIFFHandler) VerifyOTP(c *fiber.Ctx) error {
 
 	// Verify OTP
 	if err := h.otpService.VerifyOTP(profile.UserID, req.OTPCode); err != nil {
-		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -298,7 +306,6 @@ func (h *LIFFHandler) VerifyOTP(c *fiber.Ctx) error {
 // @Success 200 {object} response.Response
 // @Router /auth/liff/register [post]
 func (h *LIFFHandler) Register(c *fiber.Ctx) error {
-	log.Println("🔍 [REGISTER] Start")
 	var req LIFFRegisterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "ข้อมูลไม่ถูกต้อง")
@@ -314,11 +321,12 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	if req.OTPCode == "" {
 		return response.BadRequest(c, "กรุณาระบุรหัส OTP")
 	}
+	if req.CardLast4 == "" || len(req.CardLast4) != 4 {
+		return response.BadRequest(c, "กรุณาระบุเลขบัตรประชาชน 4 หลักสุดท้าย")
+	}
 
 	// ✅ ตรวจ Network Type - บังคับ Cellular
-	log.Printf("🔍 [REGISTER] NetworkType=%s, DeviceID=%s, MembNo=%s, OTP=%s", req.NetworkType, req.DeviceID, req.MembNo, req.OTPCode)
 	if err := h.validateNetworkType(req.NetworkType); err != nil {
-		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -331,9 +339,7 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	lineUserID := profile.UserID
 
 	// ✅ Verify OTP (ต้อง verify ก่อนหน้านี้แล้ว หรือ verify ตอน register เลย)
-	log.Printf("🔍 [REGISTER] lineUserID=%s, verifying OTP...", lineUserID)
 	if err := h.otpService.VerifyOTP(lineUserID, req.OTPCode); err != nil {
-		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 
@@ -358,11 +364,28 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// ตรวจเลขสมาชิกใน flommast
-	var mastMembNo, fullName, deptName, stsTypeDesc, mastMobile string
-	row := h.db.Raw("SELECT MAST_MEMB_NO, Full_Name, DEPT_NAME, STS_TYPE_DESC, MAST_MOBILE FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
-	err = row.Scan(&mastMembNo, &fullName, &deptName, &stsTypeDesc, &mastMobile)
+	var mastMembNo, fullName, deptName, stsTypeDesc, mastMobile, mastCardID string
+	row := h.db.Raw("SELECT MAST_MEMB_NO, Full_Name, DEPT_NAME, STS_TYPE_DESC, MAST_MOBILE, COALESCE(MAST_CARD_ID, '') FROM flommast WHERE MAST_MEMB_NO = ?", membNo).Row()
+	err = row.Scan(&mastMembNo, &fullName, &deptName, &stsTypeDesc, &mastMobile, &mastCardID)
 	if err != nil || mastMembNo == "" {
 		return response.BadRequest(c, "ไม่พบเลขสมาชิกนี้ในระบบ")
+	}
+
+	// ✅ ตรวจเลขบัตรประชาชน 4 หลักสุดท้าย
+	cleanCardID := ""
+	for _, ch := range mastCardID {
+		if ch >= '0' && ch <= '9' {
+			cleanCardID += string(ch)
+		}
+	}
+	if len(cleanCardID) < 4 {
+		log.Printf("⚠️ [REGISTER] MAST_CARD_ID too short for member %s: '%s' → cleaned: '%s'", membNo, mastCardID, cleanCardID)
+		return response.BadRequest(c, "ข้อมูลบัตรประชาชนในระบบไม่สมบูรณ์ กรุณาติดต่อสหกรณ์")
+	}
+	dbCardLast4 := cleanCardID[len(cleanCardID)-4:]
+	if req.CardLast4 != dbCardLast4 {
+		log.Printf("🔍[REGISTER] Card last4 mismatch for member %s: input=%s, db=%s (raw='%s')", membNo, req.CardLast4, dbCardLast4, mastCardID)
+		return response.BadRequest(c, "เลขบัตรประชาชน 4 หลักสุดท้ายไม่ตรงกับข้อมูลสมาชิก")
 	}
 
 	// Get verified phone from OTP
@@ -561,9 +584,7 @@ func (h *LIFFHandler) ChangeDevice(c *fiber.Ctx) error {
 	lineUserID := profile.UserID
 
 	// Verify OTP
-	log.Printf("🔍 [REGISTER] lineUserID=%s, verifying OTP...", lineUserID)
 	if err := h.otpService.VerifyOTP(lineUserID, req.OTPCode); err != nil {
-		log.Printf("🔍 [REGISTER] OTP verify failed: %v", err)
 		return response.BadRequest(c, err.Error())
 	}
 

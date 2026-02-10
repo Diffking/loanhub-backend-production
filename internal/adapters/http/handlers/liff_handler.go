@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"spsc-loaneasy/internal/core/services"
@@ -24,7 +25,70 @@ import (
 // ✅ Network Type Check (บังคับ Cellular เฉพาะ Register)
 // ✅ Login อนุญาต WiFi (มี LINE Token + Device ID ป้องกัน)
 // ✅ OTP Phone Verification (ยืนยันเบอร์โทร)
+// ✅ Brute-force Protection (ล็อคหลังใส่ผิด 5 ครั้ง, 30 นาที)
 // ============================================================
+
+// 🔒 Brute-force protection: ล็อคหลังใส่เลขบัตรผิด 5 ครั้ง
+const (
+	maxCardAttempts  = 5
+	lockDuration     = 30 * time.Minute
+)
+
+type cardAttemptInfo struct {
+	count    int
+	lockedAt time.Time
+}
+
+var (
+	cardAttempts   = make(map[string]*cardAttemptInfo)
+	cardAttemptsMu sync.Mutex
+)
+
+// checkCardLock ตรวจว่าถูกล็อคหรือยัง — return เวลาที่เหลือ (0 = ไม่ล็อค)
+func checkCardLock(membNo string) time.Duration {
+	cardAttemptsMu.Lock()
+	defer cardAttemptsMu.Unlock()
+
+	info, exists := cardAttempts[membNo]
+	if !exists {
+		return 0
+	}
+	if info.count >= maxCardAttempts && !info.lockedAt.IsZero() {
+		remaining := lockDuration - time.Since(info.lockedAt)
+		if remaining > 0 {
+			return remaining
+		}
+		// หมดเวลาล็อค → reset
+		delete(cardAttempts, membNo)
+	}
+	return 0
+}
+
+// recordCardFail บันทึกใส่ผิด — return true ถ้าถูกล็อคแล้ว
+func recordCardFail(membNo string) (locked bool, remaining time.Duration) {
+	cardAttemptsMu.Lock()
+	defer cardAttemptsMu.Unlock()
+
+	info, exists := cardAttempts[membNo]
+	if !exists {
+		info = &cardAttemptInfo{}
+		cardAttempts[membNo] = info
+	}
+	info.count++
+	if info.count >= maxCardAttempts {
+		info.lockedAt = time.Now()
+		log.Printf("🔒 [SECURITY] Member %s locked after %d failed card attempts", membNo, info.count)
+		return true, lockDuration
+	}
+	return false, 0
+}
+
+// resetCardAttempts ใส่ถูก → reset
+func resetCardAttempts(membNo string) {
+	cardAttemptsMu.Lock()
+	defer cardAttemptsMu.Unlock()
+	delete(cardAttempts, membNo)
+}
 
 type LIFFHandler struct {
 	db              *gorm.DB
@@ -210,6 +274,13 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 	}
 
 	// ✅ ตรวจเลขบัตรประชาชน 4 หลักสุดท้าย
+	// 🔒 ตรวจว่าถูกล็อคอยู่หรือไม่
+	if remaining := checkCardLock(membNo); remaining > 0 {
+		mins := int(remaining.Minutes()) + 1
+		log.Printf("🔒 [OTP] Member %s is locked, remaining %d min", membNo, mins)
+		return response.BadRequest(c, fmt.Sprintf("ใส่เลขบัตรผิดเกินกำหนด กรุณารอ %d นาที", mins))
+	}
+
 	cleanCardID := ""
 	for _, ch := range mastCardID {
 		if ch >= '0' && ch <= '9' {
@@ -222,9 +293,16 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 	}
 	dbCardLast4 := cleanCardID[len(cleanCardID)-4:]
 	if req.CardLast4 != dbCardLast4 {
+		locked, _ := recordCardFail(membNo)
+		if locked {
+			log.Printf("🔒 [OTP] Member %s LOCKED after too many failed card attempts", membNo)
+			return response.BadRequest(c, fmt.Sprintf("ใส่เลขบัตรผิดเกินกำหนด กรุณารอ %d นาที", int(lockDuration.Minutes())))
+		}
 		log.Printf("🔍[OTP] Card last4 mismatch for member %s: input=%s, db=%s (raw='%s')", membNo, req.CardLast4, dbCardLast4, mastCardID)
 		return response.BadRequest(c, "เลขบัตรประชาชน 4 หลักสุดท้ายไม่ตรงกับข้อมูลสมาชิก")
 	}
+	// ✅ ใส่ถูก → reset counter
+	resetCardAttempts(membNo)
 
 	// Generate OTP
 	otpCode, err := h.otpService.GenerateOTP(profile.UserID, cleanPhone)
@@ -374,6 +452,13 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// ✅ ตรวจเลขบัตรประชาชน 4 หลักสุดท้าย
+	// 🔒 ตรวจว่าถูกล็อคอยู่หรือไม่
+	if remaining := checkCardLock(membNo); remaining > 0 {
+		mins := int(remaining.Minutes()) + 1
+		log.Printf("🔒 [REGISTER] Member %s is locked, remaining %d min", membNo, mins)
+		return response.BadRequest(c, fmt.Sprintf("ใส่เลขบัตรผิดเกินกำหนด กรุณารอ %d นาที", mins))
+	}
+
 	cleanCardID := ""
 	for _, ch := range mastCardID {
 		if ch >= '0' && ch <= '9' {
@@ -386,9 +471,16 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 	}
 	dbCardLast4 := cleanCardID[len(cleanCardID)-4:]
 	if req.CardLast4 != dbCardLast4 {
+		locked, _ := recordCardFail(membNo)
+		if locked {
+			log.Printf("🔒 [REGISTER] Member %s LOCKED after too many failed card attempts", membNo)
+			return response.BadRequest(c, fmt.Sprintf("ใส่เลขบัตรผิดเกินกำหนด กรุณารอ %d นาที", int(lockDuration.Minutes())))
+		}
 		log.Printf("🔍[REGISTER] Card last4 mismatch for member %s: input=%s, db=%s (raw='%s')", membNo, req.CardLast4, dbCardLast4, mastCardID)
 		return response.BadRequest(c, "เลขบัตรประชาชน 4 หลักสุดท้ายไม่ตรงกับข้อมูลสมาชิก")
 	}
+	// ✅ ใส่ถูก → reset counter
+	resetCardAttempts(membNo)
 
 	// Get verified phone from OTP
 	verifiedPhone := h.otpService.GetVerifiedPhone(lineUserID)

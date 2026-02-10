@@ -29,9 +29,6 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	mortgageRepo := repositories.NewMortgageRepository(db)
 	transactionRepo := repositories.NewTransactionRepository(db)
 
-	// Phase 2: Queue repository
-	queueRepo := repositories.NewQueueRepository(db)
-
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
 	userService := services.NewUserService(userRepo, memberRepo)
@@ -55,18 +52,6 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard service
 	dashboardService := services.NewDashboardService(db)
 
-	// Phase 2: Queue service
-	queueService := services.NewQueueService(queueRepo)
-
-	// ============================================================
-	// Phase 4: Queue Notify + Auto services
-	// ============================================================
-	queueNotifyService := services.NewQueueNotifyService()
-	queueService.SetNotifyService(queueNotifyService)
-
-	queueAutoService := services.NewQueueAutoService(queueRepo, queueNotifyService)
-	queueAutoService.Start() // Launch background goroutines
-
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
 	authHandler := handlers.NewAuthHandler(authService, cfg)
@@ -79,23 +64,16 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard handler
 	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
 
-	// Phase 2+4+5: Queue handlers (updated constructors)
-	queueHandler := handlers.NewQueueHandler(queueService, queueNotifyService)
-	queueAdminHandler := handlers.NewQueueAdminHandler(queueService)
-
-	// Phase 6: Display handler
-	queueDisplayHandler := handlers.NewQueueDisplayHandler(queueService, queueNotifyService)
-
 	// LINE Handler
 	lineHandler := handlers.NewLINEHandler(db)
 
 	// ============================================================
-	// 🆕 LIFF Handler v3 - รับ lineService + otpService + smsService
+	// LIFF Handler v3 - รับ lineService + otpService + smsService
 	// ============================================================
 	lineService := lineHandler.GetLINEService()
 	otpService := services.NewOTPService(db)
-	smsService := services.NewSMSService(lineService) // 🆕 SMS Service
-	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService) // 🆕 เพิ่ม smsService
+	smsService := services.NewSMSService(lineService)
+	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService)
 
 	// v2.2.2: Mobile Handler (Aggregated APIs)
 	mobileHandler := handlers.NewMobileHandler(
@@ -118,8 +96,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
-		masterHandler, dashboardHandler, lineHandler, liffHandler,
-		queueHandler, queueAdminHandler, queueDisplayHandler, cfg)
+		masterHandler, dashboardHandler, lineHandler, liffHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -137,9 +114,6 @@ func setupAPIV1Routes(
 	dashboardHandler *handlers.DashboardHandler,
 	lineHandler *handlers.LINEHandler,
 	liffHandler *handlers.LIFFHandler,
-	queueHandler *handlers.QueueHandler,
-	queueAdminHandler *handlers.QueueAdminHandler,
-	queueDisplayHandler *handlers.QueueDisplayHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -181,71 +155,34 @@ func setupAPIV1Routes(
 	dashboardRoutes := router.Group("/dashboard")
 	dashboardRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
-
-	// Phase 2+4+5: Queue routes (Authenticated users)
-	setupQueueDisplayRoutes(router, queueDisplayHandler)
-	queueRoutes := router.Group("/queue")
-	queueRoutes.Use(middleware.AuthMiddleware(cfg))
-	setupQueueRoutes(queueRoutes, queueHandler)
-
-	// Phase 6: Queue Display routes (PUBLIC — no auth for TV screens)
-
-	// Phase 2+5: Queue admin routes (Officer/Admin only)
-	queueAdminRoutes := router.Group("/admin/queue")
-	queueAdminRoutes.Use(middleware.AuthMiddleware(cfg))
-	queueAdminRoutes.Use(middleware.OfficerOrAdmin())
-	setupQueueAdminRoutes(queueAdminRoutes, queueAdminHandler)
 }
 
 // setupAuthRoutes configures authentication routes
 func setupAuthRoutes(router fiber.Router, handler *handlers.AuthHandler, cfg *config.Config) {
-	// Public routes
 	router.Post("/register", handler.Register)
 	router.Post("/login", handler.Login)
 	router.Post("/refresh", handler.RefreshToken)
 	router.Post("/logout", handler.Logout)
-
-	// Protected routes
 	router.Get("/me", middleware.AuthMiddleware(cfg), handler.Me)
 	router.Post("/logout-all", middleware.AuthMiddleware(cfg), handler.LogoutAll)
 }
 
 // setupLINERoutes configures LINE authentication routes
 func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *config.Config) {
-	// PUBLIC - Get LINE Login URL (for login with LINE - no auth required)
 	router.Get("/url", handler.GetLINELoginURL)
-
-	// PUBLIC - LINE callback (LINE redirects here)
 	router.Get("/callback", handler.LINECallback)
-
-	// PROTECTED - Link LINE account (requires login first)
 	router.Post("/link", middleware.AuthMiddleware(cfg), handler.LinkLINE)
-
-	// PROTECTED - Unlink LINE account
 	router.Post("/unlink", middleware.AuthMiddleware(cfg), handler.UnlinkLINE)
-
-	// PROTECTED - Get LINE status
 	router.Get("/status", middleware.AuthMiddleware(cfg), handler.GetLINEStatus)
 }
 
-// ============================================================
-// LIFF Routes
-// ============================================================
+// setupLIFFRoutes configures LIFF routes
 func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
-	// Check if LINE user exists in system (5 req/min/IP)
 	router.Post("/check", middleware.AuthRateLimiter(), handler.CheckLineUser)
-
-	// OTP routes (3 req/min/IP)
 	router.Post("/otp/request", middleware.StrictRateLimiter(), handler.RequestOTP)
 	router.Post("/otp/verify", middleware.StrictRateLimiter(), handler.VerifyOTP)
-
-	// Register - Link LINE with Member Number (3 req/min/IP)
 	router.Post("/register", middleware.StrictRateLimiter(), handler.Register)
-
-	// Login with LIFF (5 req/min/IP)
 	router.Post("/login", middleware.AuthRateLimiter(), handler.LoginWithLiff)
-
-	// Device management
 	router.Post("/device/change", middleware.StrictRateLimiter(), handler.ChangeDevice)
 	router.Post("/device/info", middleware.AuthRateLimiter(), handler.GetDeviceInfo)
 }
@@ -268,13 +205,10 @@ func setupProfileRoutes(router fiber.Router, handler *handlers.UserHandler) {
 
 // setupMortgageRoutes configures mortgage routes (Phase 4)
 func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler, cfg *config.Config) {
-	// Member can view their own mortgages
 	router.Get("/my", handler.GetMyMortgages)
 
-	// Officer/Admin routes
 	officerRoutes := router.Group("")
 	officerRoutes.Use(middleware.OfficerOrAdmin())
-
 	officerRoutes.Post("/", handler.Create)
 	officerRoutes.Get("/", handler.List)
 	officerRoutes.Get("/:id", handler.GetByID)
@@ -288,36 +222,31 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 	officerRoutes.Put("/:id/approve", handler.Approve)
 	officerRoutes.Put("/:id/reject", handler.Reject)
 
-	// Admin only
 	adminRoutes := router.Group("")
 	adminRoutes.Use(middleware.AdminOnly())
 	adminRoutes.Put("/:id/officer", handler.ChangeOfficer)
 }
 
-// setupMasterRoutes configures master data routes (Admin only) (Phase 4)
+// setupMasterRoutes configures master data routes (Phase 4)
 func setupMasterRoutes(router fiber.Router, handler *handlers.MasterHandler) {
-	// Loan Types
 	router.Get("/loan-types", handler.ListLoanTypes)
 	router.Get("/loan-types/:id", handler.GetLoanType)
 	router.Post("/loan-types", handler.CreateLoanType)
 	router.Put("/loan-types/:id", handler.UpdateLoanType)
 	router.Delete("/loan-types/:id", handler.DeleteLoanType)
 
-	// Loan Steps
 	router.Get("/loan-steps", handler.ListLoanSteps)
 	router.Get("/loan-steps/:id", handler.GetLoanStep)
 	router.Post("/loan-steps", handler.CreateLoanStep)
 	router.Put("/loan-steps/:id", handler.UpdateLoanStep)
 	router.Delete("/loan-steps/:id", handler.DeleteLoanStep)
 
-	// Loan Docs
 	router.Get("/loan-docs", handler.ListLoanDocs)
 	router.Get("/loan-docs/:id", handler.GetLoanDoc)
 	router.Post("/loan-docs", handler.CreateLoanDoc)
 	router.Put("/loan-docs/:id", handler.UpdateLoanDoc)
 	router.Delete("/loan-docs/:id", handler.DeleteLoanDoc)
 
-	// Loan Appts
 	router.Get("/loan-appts", handler.ListLoanAppts)
 	router.Get("/loan-appts/:id", handler.GetLoanAppt)
 	router.Post("/loan-appts", handler.CreateLoanAppt)
@@ -327,106 +256,17 @@ func setupMasterRoutes(router fiber.Router, handler *handlers.MasterHandler) {
 
 // setupDashboardRoutes configures dashboard routes (Phase 5)
 func setupDashboardRoutes(router fiber.Router, handler *handlers.DashboardHandler) {
-	// Auto-detect role dashboard (All authenticated users)
 	router.Get("/", handler.GetMyDashboard)
-
-	// User dashboard (All authenticated users)
 	router.Get("/user", handler.GetUserDashboard)
-
-	// Officer dashboard (Officer/Admin only)
 	router.Get("/officer", middleware.OfficerOrAdmin(), handler.GetOfficerDashboard)
-
-	// Admin dashboard (Admin only)
 	router.Get("/admin", middleware.AdminOnly(), handler.GetAdminDashboard)
-}
-
-// ============================================================
-// Phase 2+4+5: Queue Routes (Authenticated users)
-// ============================================================
-
-func setupQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
-	// Branch info
-	router.Get("/branches", handler.GetBranches)
-	router.Get("/branches/:id/services", handler.GetBranchServices)
-	router.Get("/branches/:id/status", handler.GetBranchStatus)
-
-	// Walk-in
-	router.Post("/walkin", handler.CreateWalkin)
-
-	// My tickets
-	router.Post("/ticket", handler.CreateWalkin)
-	router.Get("/my-tickets", handler.GetMyTickets)
-	router.Get("/my-tickets/:id", handler.GetMyTicketByID)
-
-	// Track by ticket number
-	router.Get("/track/:ticket_number", handler.TrackTicket)
-
-	// Cancel ticket (walk-in)
-	router.Delete("/ticket/:id", handler.CancelTicket)
-
-	// Phase 4: SSE real-time events
-	router.Get("/events", handler.SSEEvents)
-
-	// Phase 5: Booking
-	router.Get("/booking/slots", handler.GetBookingSlots)
-	router.Post("/booking", handler.CreateBooking)
-	router.Delete("/booking/:id", handler.CancelBooking)
-}
-
-// ============================================================
-// Phase 2+5: Queue Admin Routes (Officer/Admin)
-// ============================================================
-
-func setupQueueAdminRoutes(router fiber.Router, handler *handlers.QueueAdminHandler) {
-	// Counter management
-	router.Post("/counter/open", handler.OpenCounter)
-	router.Post("/counter/close", handler.CloseCounter)
-	router.Post("/counter/break", handler.BreakCounter)
-
-	// Call & Serve
-	router.Post("/call-next", handler.CallNext)
-	router.Post("/call/:id", handler.CallSpecific)
-	router.Post("/recall/:id", handler.Recall)
-	router.Post("/serve/:id", handler.Serve)
-	router.Post("/complete/:id", handler.Complete)
-	router.Post("/skip/:id", handler.Skip)
-	router.Post("/transfer/:id", handler.Transfer)
-
-	// Dashboard & History
-	router.Get("/dashboard", handler.Dashboard)
-	router.Get("/history", handler.History)
-
-	// Config
-	router.Get("/config", handler.GetConfig)
-	router.Put("/config", handler.UpdateConfig)
-
-	// Phase 5: Booking management
-	router.Get("/bookings", handler.GetBookings)
-	router.Post("/booking/:id/checkin", handler.CheckinBooking)
-	router.Post("/slots/generate", handler.GenerateSlots)
-}
-
-// ============================================================
-// Phase 6: Queue Display Routes (PUBLIC — no auth)
-// ============================================================
-
-func setupQueueDisplayRoutes(router fiber.Router, handler *handlers.QueueDisplayHandler) {
-	router.Get("/queue/display/:branch_id", handler.GetDisplayData)
-	router.Get("/queue/display/:branch_id/events", handler.DisplaySSE)
 }
 
 // setupAPIV2Routes configures API v2 routes (Mobile-optimized)
 func setupAPIV2Routes(router fiber.Router, mobileHandler *handlers.MobileHandler, cfg *config.Config) {
-	// Mobile routes group (requires authentication)
 	mobileRoutes := router.Group("/mobile")
 	mobileRoutes.Use(middleware.AuthMiddleware(cfg))
-
-	// GET /api/v2/mobile/dashboard
 	mobileRoutes.Get("/dashboard", mobileHandler.GetDashboard)
-
-	// GET /api/v2/mobile/my-loans
 	mobileRoutes.Get("/my-loans", mobileHandler.GetMyLoans)
-
-	// GET /api/v2/mobile/master
 	mobileRoutes.Get("/master", mobileHandler.GetMasterData)
 }

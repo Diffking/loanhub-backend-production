@@ -61,7 +61,7 @@ func seedLoanTypes(db *gorm.DB) error {
 
 	for _, lt := range loanTypes {
 		var existing models.LoanType
-		if err := db.Where("code = ?", lt.Code).First(&existing).Error; err != nil {
+		if err := db.Unscoped().Where("code = ?", lt.Code).First(&existing).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				if err := db.Create(&lt).Error; err != nil {
 					return err
@@ -142,7 +142,7 @@ func seedLoanSteps(db *gorm.DB) error {
 
 	for _, ls := range loanSteps {
 		var existing models.LoanStep
-		if err := db.Where("code = ?", ls.Code).First(&existing).Error; err != nil {
+		if err := db.Unscoped().Where("code = ?", ls.Code).First(&existing).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				if err := db.Create(&ls).Error; err != nil {
 					return err
@@ -196,7 +196,7 @@ func seedLoanDocs(db *gorm.DB) error {
 
 	for _, ld := range loanDocs {
 		var existing models.LoanDoc
-		if err := db.Where("code = ?", ld.Code).First(&existing).Error; err != nil {
+		if err := db.Unscoped().Where("code = ?", ld.Code).First(&existing).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				if err := db.Create(&ld).Error; err != nil {
 					return err
@@ -242,7 +242,7 @@ func seedLoanAppts(db *gorm.DB) error {
 
 	for _, la := range loanAppts {
 		var existing models.LoanAppt
-		if err := db.Where("code = ?", la.Code).First(&existing).Error; err != nil {
+		if err := db.Unscoped().Where("code = ?", la.Code).First(&existing).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				if err := db.Create(&la).Error; err != nil {
 					return err

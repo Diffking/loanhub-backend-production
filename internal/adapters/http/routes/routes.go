@@ -183,8 +183,6 @@ func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
 	router.Post("/otp/verify", middleware.StrictRateLimiter(), handler.VerifyOTP)
 	router.Post("/register", middleware.StrictRateLimiter(), handler.Register)
 	router.Post("/login", middleware.AuthRateLimiter(), handler.LoginWithLiff)
-	router.Post("/device/change", middleware.StrictRateLimiter(), handler.ChangeDevice)
-	router.Post("/device/info", middleware.AuthRateLimiter(), handler.GetDeviceInfo)
 }
 
 // setupUserRoutes configures user management routes (Admin only)

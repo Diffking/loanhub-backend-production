@@ -15,7 +15,7 @@ type User struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	MembNo    string         `gorm:"uniqueIndex;size:20;not null" json:"memb_no"`
 	Username  string         `gorm:"uniqueIndex;size:50;not null" json:"username"`
-	Email     string         `gorm:"uniqueIndex;size:100;not null" json:"email"`
+	Email     *string        `gorm:"uniqueIndex;size:100" json:"email"`
 	Password  string         `gorm:"size:255;not null" json:"-"`
 	Role      string         `gorm:"size:20;default:'USER'" json:"role"`
 	IsActive  bool           `gorm:"default:true" json:"is_active"`
@@ -33,7 +33,7 @@ type UserResponse struct {
 	ID        uint      `json:"id"`
 	MembNo    string    `json:"memb_no"`
 	Username  string    `json:"username"`
-	Email     string    `json:"email"`
+	Email     *string   `json:"email"`
 	Role      string    `json:"role"`
 	IsActive  bool      `json:"is_active"`
 	FullName  string    `json:"full_name,omitempty"`

@@ -394,7 +394,7 @@ func (h *LIFFHandler) Register(c *fiber.Ctx) error {
 		line_user_id, line_display_name, line_picture_url, line_linked_at, 
 		phone_verified, network_type,
 		email, password, created_at, updated_at
-	) VALUES (?, ?, ?, 'USER', ?, ?, ?, ?, ?, NOW(), ?, ?, '', '', NOW(), NOW())`,
+	) VALUES (?, ?, ?, 'USER', ?, ?, ?, ?, ?, NOW(), ?, ?, NULL, '', NOW(), NOW())`,
 		username, fullName, membNo, deptName, verifiedPhone,
 		lineUserID, req.LineDisplayName, req.LinePictureURL,
 		verifiedPhone, req.NetworkType)

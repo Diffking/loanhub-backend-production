@@ -15,9 +15,11 @@ type User struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	MembNo    string         `gorm:"uniqueIndex;size:20;not null" json:"memb_no"`
 	Username  string         `gorm:"uniqueIndex;size:50;not null" json:"username"`
+	FullName  string         `gorm:"size:100" json:"full_name"`
 	Email     *string        `gorm:"uniqueIndex;size:100" json:"email"`
 	Password  string         `gorm:"size:255;not null" json:"-"`
 	Role      string         `gorm:"size:20;default:'USER'" json:"role"`
+	DeptName  string         `gorm:"size:150" json:"dept_name"`
 	IsActive  bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
@@ -49,6 +51,8 @@ func (u *User) ToResponse() *UserResponse {
 		Email:     u.Email,
 		Role:      u.Role,
 		IsActive:  u.IsActive,
+		FullName:  u.FullName,
+		DeptName:  u.DeptName,
 		CreatedAt: u.CreatedAt,
 	}
 }
@@ -167,18 +171,18 @@ func (LoanAppt) TableName() string {
 
 // Mortgage ข้อมูลจำนอง (ตารางหลัก)
 type Mortgage struct {
-	ID              uint           `gorm:"primaryKey" json:"id"`
-	ContractNo      *string        `gorm:"size:50;uniqueIndex" json:"contract_no"`
-	MembNo          string         `gorm:"size:20;not null;index" json:"memb_no"`
-	OfficerID       uint           `gorm:"not null" json:"officer_id"`
-	UserID          uint           `gorm:"not null" json:"user_id"`
-	Amount          float64        `gorm:"type:decimal(15,2);not null" json:"amount"`
-	Collateral      string         `gorm:"type:text" json:"collateral"`
-	Purpose         string         `gorm:"type:text" json:"purpose"`
-	GuarantorMembNo *string        `gorm:"size:20" json:"guarantor_memb_no"`
-	LoanTypeID      uint           `gorm:"not null" json:"loan_type_id"`
-	InterestRate    float64        `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
-	CurrentStepID   uint           `gorm:"not null" json:"current_step_id"`
+	ID              uint    `gorm:"primaryKey" json:"id"`
+	ContractNo      *string `gorm:"size:50;uniqueIndex" json:"contract_no"`
+	MembNo          string  `gorm:"size:20;not null;index" json:"memb_no"`
+	OfficerID       uint    `gorm:"not null" json:"officer_id"`
+	UserID          uint    `gorm:"not null" json:"user_id"`
+	Amount          float64 `gorm:"type:decimal(15,2);not null" json:"amount"`
+	Collateral      string  `gorm:"type:text" json:"collateral"`
+	Purpose         string  `gorm:"type:text" json:"purpose"`
+	GuarantorMembNo *string `gorm:"size:20" json:"guarantor_memb_no"`
+	LoanTypeID      uint    `gorm:"not null" json:"loan_type_id"`
+	InterestRate    float64 `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
+	CurrentStepID   uint    `gorm:"not null" json:"current_step_id"`
 
 	// Appointment fields (ย้ายมาจาก loan_appt_currents)
 	CurrentApptID *uint      `json:"current_appt_id"` // FK to loan_appts (master) - ประเภทนัดหมาย
@@ -215,33 +219,34 @@ func (Mortgage) TableName() string {
 
 // MortgageResponse DTO
 type MortgageResponse struct {
-	ID              uint       `json:"id"`
-	ContractNo      *string    `json:"contract_no"`
-	MembNo          string     `json:"memb_no"`
-	MemberName      string     `json:"member_name,omitempty"`
-	OfficerID       uint       `json:"officer_id"`
-	OfficerName     string     `json:"officer_name,omitempty"`
-	Amount          float64    `json:"amount"`
-	Collateral      string     `json:"collateral"`
-	Purpose         string     `json:"purpose"`
-	GuarantorMembNo *string    `json:"guarantor_memb_no"`
-	LoanTypeID      uint       `json:"loan_type_id"`
-	LoanTypeName    string     `json:"loan_type_name,omitempty"`
-	InterestRate    float64    `json:"interest_rate"`
-	CurrentStepID   uint       `json:"current_step_id"`
-	CurrentStepName string     `json:"current_step_name,omitempty"`
+	ID              uint    `json:"id"`
+	ContractNo      *string `json:"contract_no"`
+	MembNo          string  `json:"memb_no"`
+	MemberName      string  `json:"member_name,omitempty"`
+	OfficerID       uint    `json:"officer_id"`
+	OfficerName     string  `json:"officer_name,omitempty"`
+	Amount          float64 `json:"amount"`
+	Collateral      string  `json:"collateral"`
+	Purpose         string  `json:"purpose"`
+	GuarantorMembNo *string `json:"guarantor_memb_no"`
+	LoanTypeID      uint    `json:"loan_type_id"`
+	LoanTypeName    string  `json:"loan_type_name,omitempty"`
+	InterestRate    float64 `json:"interest_rate"`
+	CurrentStepID   uint    `json:"current_step_id"`
+	CurrentStepCode string  `json:"current_step_code,omitempty"`
+	CurrentStepName string  `json:"current_step_name,omitempty"`
 
 	// Appointment info
-	CurrentApptID   *uint  `json:"current_appt_id"`
-	CurrentApptName string `json:"current_appt_name,omitempty"`
+	CurrentApptID   *uint     `json:"current_appt_id"`
+	CurrentApptName string    `json:"current_appt_name,omitempty"`
 	CurrentAppt     *LoanAppt `json:"current_appt,omitempty"`
-	ApptDate        string `json:"appt_date,omitempty"`
-	ApptTime        string `json:"appt_time,omitempty"`
-	ApptLocation    string `json:"appt_location,omitempty"`
+	ApptDate        string    `json:"appt_date,omitempty"`
+	ApptTime        string    `json:"appt_time,omitempty"`
+	ApptLocation    string    `json:"appt_location,omitempty"`
 
 	// Document info
-	CurrentDocID   *uint  `json:"current_doc_id"`
-	CurrentDocName string `json:"current_doc_name,omitempty"`
+	CurrentDocID   *uint    `json:"current_doc_id"`
+	CurrentDocName string   `json:"current_doc_name,omitempty"`
 	CurrentDoc     *LoanDoc `json:"current_doc,omitempty"`
 
 	// Approval info
@@ -282,12 +287,17 @@ func (m *Mortgage) ToResponse() *MortgageResponse {
 	}
 
 	if m.Officer != nil {
-		resp.OfficerName = m.Officer.Username
+		if m.Officer.FullName != "" {
+			resp.OfficerName = m.Officer.FullName
+		} else {
+			resp.OfficerName = m.Officer.Username
+		}
 	}
 	if m.LoanType != nil {
 		resp.LoanTypeName = m.LoanType.Name
 	}
 	if m.CurrentStep != nil {
+		resp.CurrentStepCode = m.CurrentStep.Code
 		resp.CurrentStepName = m.CurrentStep.Name
 	}
 	if m.CurrentAppt != nil {

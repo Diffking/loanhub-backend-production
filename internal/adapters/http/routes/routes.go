@@ -219,10 +219,11 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 	officerRoutes.Put("/:id/step", handler.ChangeStep)
 	officerRoutes.Put("/:id/approve", handler.Approve)
 	officerRoutes.Put("/:id/reject", handler.Reject)
+	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
+	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
+	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
+	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
 
-	adminRoutes := router.Group("")
-	adminRoutes.Use(middleware.AdminOnly())
-	adminRoutes.Put("/:id/officer", handler.ChangeOfficer)
 }
 
 // setupMasterRoutes configures master data routes (Phase 4)

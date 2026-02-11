@@ -36,7 +36,6 @@ require (
 	github.com/swaggo/files/v2 v2.0.0 // indirect
 	github.com/tinylib/msgp v1.1.8 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect
@@ -47,4 +46,7 @@ require (
 
 require github.com/robfig/cron/v3 v3.0.1
 
-require github.com/swaggo/swag v1.16.3
+require (
+	github.com/swaggo/swag v1.16.3
+	github.com/valyala/fasthttp v1.51.0
+)

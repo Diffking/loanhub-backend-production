@@ -39,9 +39,11 @@ func (r *MortgageRepository) GetByID(ctx context.Context, id uint) (*models.Mort
 }
 
 // GetByMembNo gets mortgages by member number
+// FIX: เพิ่ม Preload("Officer") เพื่อให้ officer_name แสดงใน User App
 func (r *MortgageRepository) GetByMembNo(ctx context.Context, membNo string) ([]*models.Mortgage, error) {
 	var mortgages []*models.Mortgage
 	err := r.db.WithContext(ctx).
+		Preload("Officer").
 		Preload("LoanType").
 		Preload("CurrentStep").
 		Preload("CurrentAppt").

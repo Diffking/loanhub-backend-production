@@ -123,10 +123,11 @@ func (s *AuthService) Register(ctx context.Context, input *RegisterInput) (*Auth
 	}
 
 	// 6. Create user
+	// FIX: Email เป็น *string แล้ว ต้องใช้ &input.Email
 	user := &models.User{
 		MembNo:   input.MembNo,
 		Username: input.Username,
-		Email:    input.Email,
+		Email:    &input.Email,
 		Password: hashedPassword,
 		Role:     "USER",
 		IsActive: true,

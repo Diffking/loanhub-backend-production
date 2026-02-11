@@ -13,10 +13,10 @@ import (
 
 // User service errors
 var (
-	ErrUserNotFoundSvc    = errors.New("user not found")
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrOldPasswordWrong   = errors.New("old password is incorrect")
-	ErrCannotDeleteSelf   = errors.New("cannot delete your own account")
+	ErrUserNotFoundSvc     = errors.New("user not found")
+	ErrEmailAlreadyExists  = errors.New("email already exists")
+	ErrOldPasswordWrong    = errors.New("old password is incorrect")
+	ErrCannotDeleteSelf    = errors.New("cannot delete your own account")
 	ErrCannotChangeOwnRole = errors.New("cannot change your own role")
 )
 
@@ -95,7 +95,7 @@ func (s *UserService) ListUsers(ctx context.Context, input *ListUsersInput) (*Li
 	userResponses := make([]*models.UserResponse, len(users))
 	for i, user := range users {
 		userResponses[i] = user.ToResponse()
-		
+
 		// Get member info from flommast
 		member, err := s.memberRepo.GetByMembNo(ctx, user.MembNo)
 		if err == nil && member != nil {
@@ -156,13 +156,14 @@ func (s *UserService) UpdateUserByAdmin(ctx context.Context, id uint, adminID ui
 	}
 
 	// Update fields
-	if input.Email != nil && *input.Email != user.Email {
+	// FIX: user.Email เป็น *string แล้ว → เทียบ pointer-safe
+	if input.Email != nil && (user.Email == nil || *input.Email != *user.Email) {
 		// Check if email already exists
 		exists, _ := s.userRepo.ExistsByEmail(ctx, *input.Email)
 		if exists {
 			return nil, ErrEmailAlreadyExists
 		}
-		user.Email = *input.Email
+		user.Email = input.Email
 	}
 
 	if input.Role != nil {
@@ -224,13 +225,14 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID uint, input *Upd
 		return nil, ErrUserNotFoundSvc
 	}
 
-	if input.Email != nil && *input.Email != user.Email {
+	// FIX: user.Email เป็น *string แล้ว → เทียบ pointer-safe
+	if input.Email != nil && (user.Email == nil || *input.Email != *user.Email) {
 		// Check if email already exists
 		exists, _ := s.userRepo.ExistsByEmail(ctx, *input.Email)
 		if exists {
 			return nil, ErrEmailAlreadyExists
 		}
-		user.Email = *input.Email
+		user.Email = input.Email
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {

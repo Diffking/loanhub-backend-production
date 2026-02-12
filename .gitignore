@@ -12,3 +12,9 @@ main
 /cmd/serv
 "File_ZIP/" 
 server
+
+# Build & junk
+loaneasy
+*.zip
+package-lock.json
+.env

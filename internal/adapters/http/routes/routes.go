@@ -220,9 +220,7 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 	officerRoutes.Put("/:id/approve", handler.Approve)
 	officerRoutes.Put("/:id/reject", handler.Reject)
 	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
-	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
-	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
-	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
+	officerRoutes.Put("/:id/amount", handler.UpdateAmount)
 
 }
 

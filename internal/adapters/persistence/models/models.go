@@ -176,7 +176,8 @@ type Mortgage struct {
 	MembNo          string  `gorm:"size:20;not null;index" json:"memb_no"`
 	OfficerID       uint    `gorm:"not null" json:"officer_id"`
 	UserID          uint    `gorm:"not null" json:"user_id"`
-	Amount          float64 `gorm:"type:decimal(15,2);not null" json:"amount"`
+	Amount          float64  `gorm:"type:decimal(15,2);not null" json:"amount"`
+	ApprovedAmount  *float64 `gorm:"type:decimal(15,2)" json:"approved_amount"`
 	Collateral      string  `gorm:"type:text" json:"collateral"`
 	Purpose         string  `gorm:"type:text" json:"purpose"`
 	GuarantorMembNo *string `gorm:"size:20" json:"guarantor_memb_no"`
@@ -225,7 +226,8 @@ type MortgageResponse struct {
 	MemberName      string  `json:"member_name,omitempty"`
 	OfficerID       uint    `json:"officer_id"`
 	OfficerName     string  `json:"officer_name,omitempty"`
-	Amount          float64 `json:"amount"`
+	Amount          float64  `json:"amount"`
+	ApprovedAmount  *float64 `json:"approved_amount"`
 	Collateral      string  `json:"collateral"`
 	Purpose         string  `json:"purpose"`
 	GuarantorMembNo *string `json:"guarantor_memb_no"`
@@ -264,6 +266,7 @@ func (m *Mortgage) ToResponse() *MortgageResponse {
 		MembNo:          m.MembNo,
 		OfficerID:       m.OfficerID,
 		Amount:          m.Amount,
+		ApprovedAmount:  m.ApprovedAmount,
 		Collateral:      m.Collateral,
 		Purpose:         m.Purpose,
 		GuarantorMembNo: m.GuarantorMembNo,
@@ -355,6 +358,7 @@ const (
 	TxTypeApprove       = "APPROVE"
 	TxTypeReject        = "REJECT"
 	TxTypeOfficerChange = "OFFICER_CHANGE"
+	TxTypeAmountChange  = "AMOUNT_CHANGE"
 )
 
 // ============================================================

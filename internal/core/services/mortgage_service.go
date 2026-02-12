@@ -217,6 +217,12 @@ func (s *MortgageService) ChangeStep(ctx context.Context, mortgageID uint, input
 
 	oldStepID := mortgage.CurrentStepID
 	mortgage.CurrentStepID = newStep.ID
+
+	// ถ้าย้อนกลับไป step 1-3 (ก่อนอนุมัติ) → ล้างวงเงินอนุมัติ
+	if newStep.StepOrder < 4 && mortgage.ApprovedAmount != nil {
+		mortgage.ApprovedAmount = nil
+	}
+
 	if err := s.mortgageRepo.Update(ctx, mortgage); err != nil {
 		return nil, err
 	}

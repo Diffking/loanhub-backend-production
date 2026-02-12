@@ -77,15 +77,21 @@ func (h *MobileHandler) GetMasterData(c *fiber.Ctx) error {
 }
 
 type MyLoansLiteResponse struct {
-	ID           uint    `json:"id"`
-	MembNo       string  `json:"memb_no"`
-	Amount       float64 `json:"amount"`
-	LoanTypeName string  `json:"loan_type_name"`
-	CurrentStep  string  `json:"current_step"`
-	StepColor    string  `json:"step_color"`
-	ApptDate     string  `json:"appt_date,omitempty"`
-	ApptTime     string  `json:"appt_time,omitempty"`
-	CreatedAt    string  `json:"created_at"`
+	ID              uint     `json:"id"`
+	MembNo          string   `json:"memb_no"`
+	Amount          float64  `json:"amount"`
+	ApprovedAmount  *float64 `json:"approved_amount"`
+	LoanTypeName    string   `json:"loan_type_name"`
+	CurrentStep     string   `json:"current_step"`
+	CurrentStepCode string   `json:"current_step_code"`
+	CurrentStepName string   `json:"current_step_name"`
+	StepColor       string   `json:"step_color"`
+	OfficerName     string   `json:"officer_name"`
+	ApptDate        string   `json:"appt_date,omitempty"`
+	ApptTime        string   `json:"appt_time,omitempty"`
+	ApptLocation    string   `json:"appt_location,omitempty"`
+	CurrentApptName string   `json:"current_appt_name,omitempty"`
+	CreatedAt       string   `json:"created_at"`
 }
 
 func (h *MobileHandler) GetMyLoans(c *fiber.Ctx) error {
@@ -99,17 +105,33 @@ func (h *MobileHandler) GetMyLoans(c *fiber.Ctx) error {
 	h.db.Model(&models.Mortgage{}).Where("memb_no = ?", membNo).Count(&total)
 
 	var mortgages []models.Mortgage
-	h.db.Preload("LoanType").Preload("CurrentStep").Where("memb_no = ?", membNo).Order("created_at DESC").Offset(params.Offset).Limit(params.Limit).Find(&mortgages)
+	h.db.Preload("LoanType").Preload("CurrentStep").Preload("Officer").Preload("CurrentAppt").Where("memb_no = ?", membNo).Order("created_at DESC").Offset(params.Offset).Limit(params.Limit).Find(&mortgages)
 
 	liteLoans := make([]MyLoansLiteResponse, len(mortgages))
 	for i, m := range mortgages {
-		liteLoans[i] = MyLoansLiteResponse{ID: m.ID, MembNo: m.MembNo, Amount: m.Amount, ApptTime: m.ApptTime, CreatedAt: m.CreatedAt.Format("2006-01-02")}
+		liteLoans[i] = MyLoansLiteResponse{
+			ID:             m.ID,
+			MembNo:         m.MembNo,
+			Amount:         m.Amount,
+			ApprovedAmount: m.ApprovedAmount,
+			ApptTime:       m.ApptTime,
+			ApptLocation:   m.ApptLocation,
+			CreatedAt:      m.CreatedAt.Format("2006-01-02"),
+		}
 		if m.LoanType != nil {
 			liteLoans[i].LoanTypeName = m.LoanType.Name
 		}
 		if m.CurrentStep != nil {
 			liteLoans[i].CurrentStep = m.CurrentStep.Name
+			liteLoans[i].CurrentStepCode = m.CurrentStep.Code
+			liteLoans[i].CurrentStepName = m.CurrentStep.Name
 			liteLoans[i].StepColor = m.CurrentStep.Color
+		}
+		if m.Officer != nil {
+			liteLoans[i].OfficerName = m.Officer.FullName
+		}
+		if m.CurrentAppt != nil {
+			liteLoans[i].CurrentApptName = m.CurrentAppt.Name
 		}
 		if m.ApptDate != nil {
 			liteLoans[i].ApptDate = m.ApptDate.Format("2006-01-02")
@@ -161,23 +183,41 @@ func (h *MobileHandler) GetDashboard(c *fiber.Ctx) error {
 
 	var stats DashboardStats
 	h.db.Model(&models.Mortgage{}).Where("memb_no = ?", membNo).Count(&stats.TotalLoans)
-	h.db.Model(&models.Mortgage{}).Where("memb_no = ? AND current_step_id IN (1,2,3,4)", membNo).Count(&stats.PendingLoans)
-	h.db.Model(&models.Mortgage{}).Where("memb_no = ? AND current_step_id = 5", membNo).Count(&stats.ApprovedLoans)
+	// step 1=RECEIVED, 2=SURVEY, 3=PENDING_APPROVE → กำลังดำเนินการ
+	h.db.Model(&models.Mortgage{}).Where("memb_no = ? AND current_step_id IN (1,2,3)", membNo).Count(&stats.PendingLoans)
+	// step 4=APPROVED
+	h.db.Model(&models.Mortgage{}).Where("memb_no = ? AND current_step_id = 4", membNo).Count(&stats.ApprovedLoans)
 	h.db.Model(&models.Mortgage{}).Where("memb_no = ?", membNo).Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalAmount)
 	dashboard.Stats = stats
 
 	var recentMortgages []models.Mortgage
-	h.db.Preload("LoanType").Preload("CurrentStep").Where("memb_no = ?", membNo).Order("created_at DESC").Limit(5).Find(&recentMortgages)
+	h.db.Preload("LoanType").Preload("CurrentStep").Preload("Officer").Preload("CurrentAppt").Where("memb_no = ?", membNo).Order("created_at DESC").Limit(5).Find(&recentMortgages)
 
 	recentLoans := make([]MyLoansLiteResponse, len(recentMortgages))
 	for i, m := range recentMortgages {
-		recentLoans[i] = MyLoansLiteResponse{ID: m.ID, MembNo: m.MembNo, Amount: m.Amount, ApptTime: m.ApptTime, CreatedAt: m.CreatedAt.Format("2006-01-02")}
+		recentLoans[i] = MyLoansLiteResponse{
+			ID:             m.ID,
+			MembNo:         m.MembNo,
+			Amount:         m.Amount,
+			ApprovedAmount: m.ApprovedAmount,
+			ApptTime:       m.ApptTime,
+			ApptLocation:   m.ApptLocation,
+			CreatedAt:      m.CreatedAt.Format("2006-01-02"),
+		}
 		if m.LoanType != nil {
 			recentLoans[i].LoanTypeName = m.LoanType.Name
 		}
 		if m.CurrentStep != nil {
 			recentLoans[i].CurrentStep = m.CurrentStep.Name
+			recentLoans[i].CurrentStepCode = m.CurrentStep.Code
+			recentLoans[i].CurrentStepName = m.CurrentStep.Name
 			recentLoans[i].StepColor = m.CurrentStep.Color
+		}
+		if m.Officer != nil {
+			recentLoans[i].OfficerName = m.Officer.FullName
+		}
+		if m.CurrentAppt != nil {
+			recentLoans[i].CurrentApptName = m.CurrentAppt.Name
 		}
 		if m.ApptDate != nil {
 			recentLoans[i].ApptDate = m.ApptDate.Format("2006-01-02")

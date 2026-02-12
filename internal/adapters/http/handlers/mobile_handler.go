@@ -92,6 +92,7 @@ type MyLoansLiteResponse struct {
 	ApptLocation    string   `json:"appt_location,omitempty"`
 	CurrentApptName string   `json:"current_appt_name,omitempty"`
 	CreatedAt       string   `json:"created_at"`
+	UpdatedAt       string   `json:"updated_at"`
 }
 
 func (h *MobileHandler) GetMyLoans(c *fiber.Ctx) error {
@@ -117,6 +118,7 @@ func (h *MobileHandler) GetMyLoans(c *fiber.Ctx) error {
 			ApptTime:       m.ApptTime,
 			ApptLocation:   m.ApptLocation,
 			CreatedAt:      m.CreatedAt.Format("2006-01-02"),
+			UpdatedAt:      m.UpdatedAt.Format("2006-01-02"),
 		}
 		if m.LoanType != nil {
 			liteLoans[i].LoanTypeName = m.LoanType.Name
@@ -203,6 +205,7 @@ func (h *MobileHandler) GetDashboard(c *fiber.Ctx) error {
 			ApptTime:       m.ApptTime,
 			ApptLocation:   m.ApptLocation,
 			CreatedAt:      m.CreatedAt.Format("2006-01-02"),
+			UpdatedAt:      m.UpdatedAt.Format("2006-01-02"),
 		}
 		if m.LoanType != nil {
 			recentLoans[i].LoanTypeName = m.LoanType.Name

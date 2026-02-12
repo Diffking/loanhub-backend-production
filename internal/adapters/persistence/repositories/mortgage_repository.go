@@ -120,6 +120,7 @@ func (r *MortgageRepository) Update(ctx context.Context, mortgage *models.Mortga
 		"contract_no":       mortgage.ContractNo,
 		"officer_id":        mortgage.OfficerID,
 		"amount":            mortgage.Amount,
+		"approved_amount":   mortgage.ApprovedAmount,
 		"collateral":        mortgage.Collateral,
 		"purpose":           mortgage.Purpose,
 		"guarantor_memb_no": mortgage.GuarantorMembNo,

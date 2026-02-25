@@ -362,6 +362,87 @@ const (
 )
 
 // ============================================================
+// Phase 6: Document Checklist
+// ============================================================
+
+// DocItem รายการเอกสารแต่ละตัว ผูกกับ loan_type (Master)
+type DocItem struct {
+	ID         uint           `gorm:"primaryKey" json:"id"`
+	LoanTypeID uint           `gorm:"not null;index" json:"loan_type_id"`
+	Code       string         `gorm:"size:30;not null" json:"code"`
+	Name       string         `gorm:"size:200;not null" json:"name"`
+	IsRequired bool           `gorm:"default:true" json:"is_required"`
+	SortOrder  int            `gorm:"default:0" json:"sort_order"`
+	IsActive   bool           `gorm:"default:true" json:"is_active"`
+	CreatedAt  time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt  time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Relations
+	LoanType *LoanType `gorm:"foreignKey:LoanTypeID" json:"loan_type,omitempty"`
+}
+
+func (DocItem) TableName() string {
+	return "doc_items"
+}
+
+// MortgageDocCheck เช็คลิสต์เอกสารต่อ mortgage
+type MortgageDocCheck struct {
+	ID            uint       `gorm:"primaryKey" json:"id"`
+	MortgageID    uint       `gorm:"not null;uniqueIndex:uk_mortgage_doc" json:"mortgage_id"`
+	DocItemID     uint       `gorm:"not null;uniqueIndex:uk_mortgage_doc" json:"doc_item_id"`
+	IsChecked     bool       `gorm:"default:false" json:"is_checked"`
+	IsRecommended bool       `gorm:"default:false" json:"is_recommended"`
+	CheckedBy     *uint      `json:"checked_by"`
+	CheckedAt     *time.Time `json:"checked_at"`
+	CreatedAt     time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt     time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+
+	// Relations
+	Mortgage *Mortgage `gorm:"foreignKey:MortgageID" json:"mortgage,omitempty"`
+	DocItem  *DocItem  `gorm:"foreignKey:DocItemID" json:"doc_item,omitempty"`
+	Checker  *User     `gorm:"foreignKey:CheckedBy" json:"checker,omitempty"`
+}
+
+func (MortgageDocCheck) TableName() string {
+	return "mortgage_doc_checks"
+}
+
+// MortgageDocCheckResponse DTO
+type MortgageDocCheckResponse struct {
+	ID            uint       `json:"id"`
+	MortgageID    uint       `json:"mortgage_id"`
+	DocItemID     uint       `json:"doc_item_id"`
+	DocItemCode   string     `json:"doc_item_code"`
+	DocItemName   string     `json:"doc_item_name"`
+	IsRequired    bool       `json:"is_required"`
+	IsChecked     bool       `json:"is_checked"`
+	IsRecommended bool       `json:"is_recommended"`
+	SortOrder     int        `json:"sort_order"`
+	CheckedBy     *uint      `json:"checked_by"`
+	CheckedAt     *time.Time `json:"checked_at"`
+}
+
+func (m *MortgageDocCheck) ToResponse() *MortgageDocCheckResponse {
+	resp := &MortgageDocCheckResponse{
+		ID:            m.ID,
+		MortgageID:    m.MortgageID,
+		DocItemID:     m.DocItemID,
+		IsChecked:     m.IsChecked,
+		IsRecommended: m.IsRecommended,
+		CheckedBy:     m.CheckedBy,
+		CheckedAt:     m.CheckedAt,
+	}
+	if m.DocItem != nil {
+		resp.DocItemCode = m.DocItem.Code
+		resp.DocItemName = m.DocItem.Name
+		resp.IsRequired = m.DocItem.IsRequired || m.IsRecommended
+		resp.SortOrder = m.DocItem.SortOrder
+	}
+	return resp
+}
+
+// ============================================================
 // Auto Migration
 // ============================================================
 
@@ -380,5 +461,8 @@ func AutoMigrate(db *gorm.DB) error {
 		// Phase 4: Main Tables
 		&Mortgage{},
 		&Transaction{},
+		// Phase 6: Document Checklist
+		&DocItem{},
+		&MortgageDocCheck{},
 	)
 }

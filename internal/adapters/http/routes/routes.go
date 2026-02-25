@@ -29,6 +29,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	mortgageRepo := repositories.NewMortgageRepository(db)
 	transactionRepo := repositories.NewTransactionRepository(db)
 
+	// Phase 6: Doc Check repositories
+	docItemRepo := repositories.NewDocItemRepository(db)
+	docCheckRepo := repositories.NewMortgageDocCheckRepository(db)
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
 	userService := services.NewUserService(userRepo, memberRepo)
@@ -86,6 +90,14 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 		transactionRepo,
 	)
 
+	// Phase 6: DocCheck service & handler
+	docCheckService := services.NewDocCheckService(
+		docItemRepo,
+		docCheckRepo,
+		mortgageRepo,
+	)
+	docCheckHandler := handlers.NewDocCheckHandler(docCheckService, docItemRepo)
+
 	// Health check & root routes
 	app.Get("/", healthHandler.Root)
 	app.Get("/health", healthHandler.HealthCheck)
@@ -96,7 +108,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
-		masterHandler, dashboardHandler, lineHandler, liffHandler, cfg)
+		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -114,6 +126,7 @@ func setupAPIV1Routes(
 	dashboardHandler *handlers.DashboardHandler,
 	lineHandler *handlers.LINEHandler,
 	liffHandler *handlers.LIFFHandler,
+	docCheckHandler *handlers.DocCheckHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -146,10 +159,16 @@ func setupAPIV1Routes(
 	mortgageRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupMortgageRoutes(mortgageRoutes, mortgageHandler, cfg)
 
+	// Phase 6: Doc Checks routes (under mortgages, Officer/Admin)
+	setupDocCheckRoutes(mortgageRoutes, docCheckHandler)
+
 	// Phase 4: Master routes (Admin only)
 	masterRoutes := router.Group("/master")
 	masterRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupMasterRoutes(masterRoutes, masterHandler)
+
+	// Phase 6: Doc Items master routes (reuse masterRoutes auth)
+	setupDocItemRoutes(masterRoutes, docCheckHandler)
 
 	// Phase 5: Dashboard routes
 	dashboardRoutes := router.Group("/dashboard")
@@ -266,4 +285,26 @@ func setupAPIV2Routes(router fiber.Router, mobileHandler *handlers.MobileHandler
 	mobileRoutes.Get("/dashboard", mobileHandler.GetDashboard)
 	mobileRoutes.Get("/my-loans", mobileHandler.GetMyLoans)
 	mobileRoutes.Get("/master", mobileHandler.GetMasterData)
+}
+
+// ============================================================
+// Phase 6: Doc Items & Doc Checks routes
+// ============================================================
+
+// setupDocItemRoutes configures doc item master data routes
+func setupDocItemRoutes(router fiber.Router, handler *handlers.DocCheckHandler) {
+	router.Get("/doc-items", handler.ListDocItems)
+	router.Get("/doc-items/:id", handler.GetDocItem)
+	router.Post("/doc-items", handler.CreateDocItem)
+	router.Put("/doc-items/:id", handler.UpdateDocItem)
+	router.Delete("/doc-items/:id", handler.DeleteDocItem)
+}
+
+// setupDocCheckRoutes configures mortgage doc check routes
+func setupDocCheckRoutes(router fiber.Router, handler *handlers.DocCheckHandler) {
+	docCheckRoutes := router.Group("/:id/doc-checks")
+	docCheckRoutes.Use(middleware.OfficerOrAdmin())
+	docCheckRoutes.Get("/", handler.GetDocChecks)
+	docCheckRoutes.Put("/", handler.UpdateDocChecks)
+	docCheckRoutes.Get("/incomplete", handler.GetIncompleteDoc)
 }

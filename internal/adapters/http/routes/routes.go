@@ -95,6 +95,8 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 		docItemRepo,
 		docCheckRepo,
 		mortgageRepo,
+		lineService,
+		db,
 	)
 	docCheckHandler := handlers.NewDocCheckHandler(docCheckService, docItemRepo)
 
@@ -307,4 +309,5 @@ func setupDocCheckRoutes(router fiber.Router, handler *handlers.DocCheckHandler)
 	docCheckRoutes.Get("/", handler.GetDocChecks)
 	docCheckRoutes.Put("/", handler.UpdateDocChecks)
 	docCheckRoutes.Get("/incomplete", handler.GetIncompleteDoc)
+	docCheckRoutes.Post("/notify-line", handler.NotifyLineIncompleteDoc)
 }

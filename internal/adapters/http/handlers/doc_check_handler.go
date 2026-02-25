@@ -51,7 +51,6 @@ func (h *DocCheckHandler) ListDocItems(c *fiber.Ctx) error {
 		return response.InternalServerError(c, "Failed to list doc items")
 	}
 
-	// Filter by loan_type_id if provided
 	if loanTypeID != "" {
 		ltID, _ := strconv.ParseUint(loanTypeID, 10, 32)
 		if ltID > 0 {
@@ -204,7 +203,7 @@ func (h *DocCheckHandler) DeleteDocItem(c *fiber.Ctx) error {
 // Mortgage: Doc Checks (Checklist)
 // ============================================================
 
-// GetDocChecks gets document checklist for a mortgage
+// GetDocChecks ดึงเช็คลิสต์เอกสารทั้งหมดของ mortgage
 func (h *DocCheckHandler) GetDocChecks(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
 	if err != nil {
@@ -224,32 +223,25 @@ func (h *DocCheckHandler) GetDocChecks(c *fiber.Ctx) error {
 	})
 }
 
-// UpdateDocChecksRequest represents update doc checks request
-type UpdateDocChecksRequest struct {
-	Items []services.UpdateDocCheckItem `json:"items"`
-}
-
-// UpdateDocChecks updates document checklist for a mortgage
+// UpdateDocChecks อัพเดทเช็คลิสต์ (batch)
 func (h *DocCheckHandler) UpdateDocChecks(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
 	if err != nil {
 		return response.BadRequest(c, "Invalid mortgage ID")
 	}
 
-	var req UpdateDocChecksRequest
+	var req struct {
+		Items []services.UpdateDocCheckItem `json:"items"`
+	}
 	if err := c.BodyParser(&req); err != nil {
 		return response.BadRequest(c, "Invalid request body")
 	}
-
 	if len(req.Items) == 0 {
 		return response.BadRequest(c, "Items are required")
 	}
 
 	userID, _ := c.Locals("userID").(uint)
-
-	input := &services.UpdateDocCheckInput{
-		Items: req.Items,
-	}
+	input := &services.UpdateDocCheckInput{Items: req.Items}
 
 	if err := h.docCheckService.UpdateChecklist(c.Context(), uint(id), input, userID); err != nil {
 		if errors.Is(err, services.ErrMortgageNotFound) {
@@ -261,7 +253,7 @@ func (h *DocCheckHandler) UpdateDocChecks(c *fiber.Ctx) error {
 	return response.Success(c, "Doc checks updated successfully", nil)
 }
 
-// GetIncompleteDoc returns incomplete document items for toast notification
+// GetIncompleteDoc ดึงรายการเอกสารไม่ครบ → Frontend แสดง Toast
 func (h *DocCheckHandler) GetIncompleteDoc(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
 	if err != nil {
@@ -279,4 +271,28 @@ func (h *DocCheckHandler) GetIncompleteDoc(c *fiber.Ctx) error {
 	return response.Success(c, "Incomplete doc items retrieved", fiber.Map{
 		"result": result,
 	})
+}
+
+// NotifyLineIncompleteDoc ส่ง LINE แจ้งสมาชิกว่าเอกสารไม่ครบ
+func (h *DocCheckHandler) NotifyLineIncompleteDoc(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil {
+		return response.BadRequest(c, "Invalid mortgage ID")
+	}
+
+	err = h.docCheckService.NotifyLineIncompleteDoc(c.Context(), uint(id))
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrMortgageNotFound):
+			return response.NotFound(c, "Mortgage not found")
+		case errors.Is(err, services.ErrNoLineUserID):
+			return response.BadRequest(c, "สมาชิกยังไม่ได้เชื่อมต่อ LINE")
+		case errors.Is(err, services.ErrNoIncompleteItems):
+			return response.BadRequest(c, "เอกสารครบถ้วนแล้ว ไม่มีรายการที่ต้องแจ้งเตือน")
+		default:
+			return response.InternalServerError(c, "ส่ง LINE ไม่สำเร็จ: "+err.Error())
+		}
+	}
+
+	return response.Success(c, "ส่งแจ้งเตือน LINE สำเร็จ", nil)
 }

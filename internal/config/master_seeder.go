@@ -410,7 +410,28 @@ func seedDocItems(db *gorm.DB) error {
 	}
 
 	log.Println("   ✅ Doc items seeded")
+
+	// Fix is_required สำหรับข้อมูลที่ seed ไปแล้ว (GORM bool bug)
+	fixDocItemsRequired(db)
+
 	return nil
+}
+
+// fixDocItemsRequired แก้ is_required ที่ควรเป็น false
+// รันทุกครั้งที่ start — ปลอดภัย เพราะแก้เฉพาะรายการที่กำหนด
+func fixDocItemsRequired(db *gorm.DB) {
+	notRequiredCodes := []string{
+		"PT-05", "PT-06", "PT-12", "PT-13",
+		"PD-05", "PD-06",
+		"PK-05", "PK-06", "PK-12", "PK-13",
+		"FH-05", "FH-10",
+		"SB-06",
+		"AP-06",
+	}
+	for _, code := range notRequiredCodes {
+		db.Model(&models.DocItem{}).Where("code = ?", code).Update("is_required", false)
+	}
+	log.Println("   ✅ Doc items is_required fixed")
 }
 
 // docItemSeed helper struct
@@ -431,12 +452,17 @@ func seedDocItemsForType(db *gorm.DB, loanTypeID uint, items []docItemSeed) {
 					LoanTypeID: loanTypeID,
 					Code:       item.Code,
 					Name:       item.Name,
-					IsRequired: item.IsRequired,
+					IsRequired: true, // GORM default:true — สร้างเป็น true ก่อน
 					SortOrder:  item.Sort,
 					IsActive:   true,
 				}
 				if err := db.Create(&docItem).Error; err != nil {
 					log.Printf("   ⚠️ Failed to create doc_item %s: %v", item.Code, err)
+					continue
+				}
+				// Fix GORM bool zero-value: ถ้าต้องการ false ต้อง update หลัง create
+				if !item.IsRequired {
+					db.Model(&docItem).Update("is_required", false)
 				}
 			}
 		}

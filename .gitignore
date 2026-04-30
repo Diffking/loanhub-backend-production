@@ -1,21 +1,20 @@
-.env
+
+"File_ZIP/" 
+# Build & junk
 *.env
-.env.*
 *.log
-logs/
-vendor/
+*.swp
+*.zip
+.DS_Store
+.env
+.env.*
 .idea/
 .vscode/
-*.swp
-.DS_Store
-main
 /cmd/serv
-"File_ZIP/" 
-server
-
-# Build & junk
+backups/
 loaneasy
-*.zip
+logs/
+main
 package-lock.json
-.env
-.env
+server
+vendor/

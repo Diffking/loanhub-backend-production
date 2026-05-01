@@ -92,7 +92,7 @@ type Flommast struct {
 	DeptName     string  `gorm:"column:dept_name;size:200" json:"dept_name"`
 	Addr         string  `gorm:"column:addr;type:text" json:"addr"`
 	MastSalary   float64 `gorm:"column:mast_salary;type:decimal(12,2)" json:"mast_salary"`
-	MastMobile   string  `gorm:"column:mast_mobile;size:20" json:"mast_mobile"`
+	MastMobile   string  `gorm:"column:mast_mobile;size:50" json:"mast_mobile"`
 	MastAccNo    string  `gorm:"column:mast_acc_no;size:30" json:"mast_acc_no"`
 	MastBankAcno string  `gorm:"column:mast_bank_acno;size:30" json:"mast_bank_acno"`
 

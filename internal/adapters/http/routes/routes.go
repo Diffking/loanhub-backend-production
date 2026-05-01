@@ -33,6 +33,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	docItemRepo := repositories.NewDocItemRepository(db)
 	docCheckRepo := repositories.NewMortgageDocCheckRepository(db)
 
+	// Phase 1 (Loan Print): repositories
+	loanPurposeRepo := repositories.NewLoanPurposeRepository(db)
+	flommastImportRepo := repositories.NewFlommastImportRepository(db)
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
 	userService := services.NewUserService(userRepo, memberRepo)
@@ -100,6 +104,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	)
 	docCheckHandler := handlers.NewDocCheckHandler(docCheckService, docItemRepo)
 
+	// Phase 1 (Loan Print): handlers
+	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo)
+	flommastImportHandler := handlers.NewFlommastImportHandler(flommastImportRepo)
+
 	// Health check & root routes
 	app.Get("/", healthHandler.Root)
 	app.Get("/health", healthHandler.HealthCheck)
@@ -110,7 +118,8 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
-		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler, cfg)
+		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler,
+		loanPrintHandler, flommastImportHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -129,6 +138,8 @@ func setupAPIV1Routes(
 	lineHandler *handlers.LINEHandler,
 	liffHandler *handlers.LIFFHandler,
 	docCheckHandler *handlers.DocCheckHandler,
+	loanPrintHandler *handlers.LoanPrintHandler,
+	flommastImportHandler *handlers.FlommastImportHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -176,6 +187,18 @@ func setupAPIV1Routes(
 	dashboardRoutes := router.Group("/dashboard")
 	dashboardRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
+
+	// Phase 1 (Loan Print): Officer + Admin
+	loanPrintRoutes := router.Group("/loan-print")
+	loanPrintRoutes.Use(middleware.AuthMiddleware(cfg))
+	loanPrintRoutes.Use(middleware.OfficerOrAdmin())
+	setupLoanPrintRoutes(loanPrintRoutes, loanPrintHandler)
+
+	// Phase 1 (Flommast Import): Admin only
+	flommastAdminRoutes := router.Group("/admin/flommast")
+	flommastAdminRoutes.Use(middleware.AuthMiddleware(cfg))
+	flommastAdminRoutes.Use(middleware.AdminOnly())
+	setupFlommastImportRoutes(flommastAdminRoutes, flommastImportHandler)
 }
 
 // setupAuthRoutes configures authentication routes
@@ -242,7 +265,6 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 	officerRoutes.Put("/:id/reject", handler.Reject)
 	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
 	officerRoutes.Put("/:id/amount", handler.UpdateAmount)
-
 }
 
 // setupMasterRoutes configures master data routes (Phase 4)
@@ -310,4 +332,25 @@ func setupDocCheckRoutes(router fiber.Router, handler *handlers.DocCheckHandler)
 	docCheckRoutes.Put("/", handler.UpdateDocChecks)
 	docCheckRoutes.Get("/incomplete", handler.GetIncompleteDoc)
 	docCheckRoutes.Post("/notify-line", handler.NotifyLineIncompleteDoc)
+}
+
+// ============================================================
+// Phase 1 (Loan Print): Officer + Admin
+// ============================================================
+
+// setupLoanPrintRoutes configures loan-print endpoints (search members, get full data, list purposes)
+func setupLoanPrintRoutes(router fiber.Router, handler *handlers.LoanPrintHandler) {
+	router.Get("/members/search", handler.SearchMembers)
+	router.Get("/members/:memb_no", handler.GetMember)
+	router.Get("/purposes", handler.ListPurposes)
+}
+
+// ============================================================
+// Phase 1 (Flommast Import): Admin only
+// ============================================================
+
+// setupFlommastImportRoutes configures admin endpoints for uploading flommast .sql files
+func setupFlommastImportRoutes(router fiber.Router, handler *handlers.FlommastImportHandler) {
+	router.Post("/preview", handler.Preview)
+	router.Post("/apply", handler.Apply)
 }

@@ -1,6 +1,8 @@
 
 "File_ZIP/" 
 # Build & junk
+# Patch script backups (auto-generated, never commit)
+*.before-*
 *.env
 *.log
 *.swp

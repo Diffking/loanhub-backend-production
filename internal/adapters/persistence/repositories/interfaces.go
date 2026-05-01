@@ -33,10 +33,15 @@ type RefreshTokenRepository interface {
 	CountActiveByUserID(ctx context.Context, userID uint) (int64, error)
 }
 
-// MemberRepository defines member repository interface
-// Read-only access to flommast table
+// MemberRepository defines member repository interface (flommast table).
+// Read access (Get/Search) — managed by admin import for writes.
 type MemberRepository interface {
 	GetByMembNo(ctx context.Context, membNo string) (*models.Flommast, error)
 	Exists(ctx context.Context, membNo string) (bool, error)
 	Search(ctx context.Context, query string, limit int) ([]*models.Flommast, error)
+
+	// 🆕 Phase 1 (Loan Print)
+	SearchActive(ctx context.Context, query string, limit int) ([]*models.Flommast, error)
+	GetFullByMembNo(ctx context.Context, membNo string) (*models.Flommast, error)
+	CountActive(ctx context.Context) (int64, error)
 }

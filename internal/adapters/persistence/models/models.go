@@ -80,16 +80,47 @@ func (rt *RefreshToken) IsExpired() bool {
 	return time.Now().After(rt.ExpiresAt)
 }
 
-// Flommast represents the legacy flommast table (Read Only!)
+// Flommast represents the flommast table (managed by admin import).
+// ฟิลด์ครบตาม flommast3.sql; รับ import ผ่าน /api/v1/admin/flommast/apply
 type Flommast struct {
-	MastMembNo  string `gorm:"column:mast_memb_no;primaryKey" json:"mast_memb_no"`
-	FullName    string `gorm:"column:full_name" json:"full_name"`
-	DeptName    string `gorm:"column:dept_name" json:"dept_name"`
-	StsTypeDesc string `gorm:"column:sts_type_desc" json:"sts_type_desc"`
+	MastMembNo   string  `gorm:"column:mast_memb_no;size:20;primaryKey" json:"mast_memb_no"`
+	FullName     string  `gorm:"column:full_name;size:200" json:"full_name"`
+	MastBirthYmd string  `gorm:"column:mast_birth_ymd;size:8" json:"mast_birth_ymd"` // YYYYMMDD (Gregorian)
+	MastCardId   string  `gorm:"column:mast_card_id;size:13" json:"mast_card_id"`
+	StsTypeDesc  string  `gorm:"column:sts_type_desc;size:100;index" json:"sts_type_desc"`
+	MastPosition string  `gorm:"column:mast_position;size:200" json:"mast_position"`
+	DeptName     string  `gorm:"column:dept_name;size:200" json:"dept_name"`
+	Addr         string  `gorm:"column:addr;type:text" json:"addr"`
+	MastSalary   float64 `gorm:"column:mast_salary;type:decimal(12,2)" json:"mast_salary"`
+	MastMobile   string  `gorm:"column:mast_mobile;size:20" json:"mast_mobile"`
+	MastAccNo    string  `gorm:"column:mast_acc_no;size:30" json:"mast_acc_no"`
+	MastBankAcno string  `gorm:"column:mast_bank_acno;size:30" json:"mast_bank_acno"`
+
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at,omitempty"`
 }
 
 func (Flommast) TableName() string {
 	return "flommast"
+}
+
+// Age คำนวณอายุปัจจุบันจาก MastBirthYmd ("YYYYMMDD") — คืน 0 ถ้า invalid
+func (f *Flommast) Age() int {
+	if len(f.MastBirthYmd) != 8 {
+		return 0
+	}
+	bt, err := time.Parse("20060102", f.MastBirthYmd)
+	if err != nil {
+		return 0
+	}
+	now := time.Now()
+	years := now.Year() - bt.Year()
+	if now.YearDay() < bt.YearDay() {
+		years--
+	}
+	if years < 0 {
+		return 0
+	}
+	return years
 }
 
 // ============================================================
@@ -446,8 +477,29 @@ func (m *MortgageDocCheck) ToResponse() *MortgageDocCheckResponse {
 // Auto Migration
 // ============================================================
 
+
+// ============================================================
+// Phase 1 (Loan Print): Loan Purpose (FLOPRESN)
+// ============================================================
+
+// LoanPurpose ตารางเหตุผลการกู้ (จาก FLOPRESN.txt)
+// ใช้เป็น dropdown ในข้อ 1 "วัตถุประสงค์เพื่อ..."
+type LoanPurpose struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	Code      string         `gorm:"size:10;uniqueIndex;not null" json:"code"`
+	Name      string         `gorm:"size:200;not null" json:"name"`
+	IsActive  bool           `gorm:"default:true;index" json:"is_active"`
+	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (LoanPurpose) TableName() string {
+	return "loan_purposes"
+}
+
 // AutoMigrate runs auto migration for new tables only
-// ห้าม migrate ตาราง flommast!
+// flommast managed via admin import (Phase 1)
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		// Phase 2-3
@@ -458,6 +510,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&LoanStep{},
 		&LoanDoc{},
 		&LoanAppt{},
+		// Phase 1 (Loan Print)
+		&LoanPurpose{},
+		&Flommast{},
 		// Phase 4: Main Tables
 		&Mortgage{},
 		&Transaction{},

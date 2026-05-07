@@ -519,5 +519,35 @@ func AutoMigrate(db *gorm.DB) error {
 		// Phase 6: Document Checklist
 		&DocItem{},
 		&MortgageDocCheck{},
+		// Phase 3a: Auto-numbering
+		&AppCounter{},
 	)
 }
+
+// ============================================================
+// Phase 3a: Auto-numbering counter
+// ============================================================
+
+// AppCounter — auto-numbering counter for various app entities.
+// Phase 3a: รัน "เลขที่ใบคำขอกู้" แบบ 00001/2569
+//
+// Uniqueness: (kind, year) — one row per kind per Buddhist year.
+// On year change, a new row is auto-created by AppCounterRepository.IssueNext.
+type AppCounter struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Kind      string    `gorm:"size:50;not null;uniqueIndex:uniq_kind_year,priority:1" json:"kind"`
+	Year      int       `gorm:"not null;uniqueIndex:uniq_kind_year,priority:2" json:"year"`
+	LastSeq   int       `gorm:"not null;default:0" json:"last_seq"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (AppCounter) TableName() string {
+	return "app_counters"
+}
+
+// Counter kind constants
+const (
+	AppCounterKindLoanPrint = "loan_print"
+)
+

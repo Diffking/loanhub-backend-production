@@ -104,8 +104,11 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	)
 	docCheckHandler := handlers.NewDocCheckHandler(docCheckService, docItemRepo)
 
+	// Phase 3a: App counter repository (auto-numbering)
+	appCounterRepo := repositories.NewAppCounterRepository(db)
+
 	// Phase 1 (Loan Print): handlers
-	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo)
+	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo, appCounterRepo)
 	flommastImportHandler := handlers.NewFlommastImportHandler(flommastImportRepo)
 
 	// Health check & root routes
@@ -343,6 +346,10 @@ func setupLoanPrintRoutes(router fiber.Router, handler *handlers.LoanPrintHandle
 	router.Get("/members/search", handler.SearchMembers)
 	router.Get("/members/:memb_no", handler.GetMember)
 	router.Get("/purposes", handler.ListPurposes)
+
+	// Phase 3a: Auto-numbering
+	router.Get("/next-number", handler.PeekNextNumber)
+	router.Post("/issue-number", handler.IssueNextNumber)
 }
 
 // ============================================================

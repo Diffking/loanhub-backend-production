@@ -22,6 +22,7 @@ type LoanPrintHandler struct {
 	memberRepo      repositories.MemberRepository
 	loanPurposeRepo *repositories.LoanPurposeRepository
 	appCounterRepo  *repositories.AppCounterRepository
+	savingsRepo     repositories.SavingsRepository
 }
 
 // NewLoanPrintHandler creates a new loan print handler.
@@ -29,11 +30,13 @@ func NewLoanPrintHandler(
 	memberRepo repositories.MemberRepository,
 	loanPurposeRepo *repositories.LoanPurposeRepository,
 	appCounterRepo *repositories.AppCounterRepository,
+	savingsRepo     repositories.SavingsRepository,
 ) *LoanPrintHandler {
 	return &LoanPrintHandler{
 		memberRepo:      memberRepo,
 		loanPurposeRepo: loanPurposeRepo,
 		appCounterRepo:  appCounterRepo,
+		savingsRepo:     savingsRepo,
 	}
 }
 
@@ -65,6 +68,8 @@ type MemberFullResponse struct {
 	MastMobile   string  `json:"mast_mobile"`
 	MastAccNo    string  `json:"mast_acc_no"`
 	MastBankAcno string  `json:"mast_bank_acno"`
+	MastPrindAmt   float64 `json:"mast_prind_amt"`
+	MemberTypeCode string  `json:"member_type_code"`
 }
 
 func toMemberFullResponse(m *models.Flommast) MemberFullResponse {
@@ -82,6 +87,8 @@ func toMemberFullResponse(m *models.Flommast) MemberFullResponse {
 		MastMobile:   m.MastMobile,
 		MastAccNo:    m.MastAccNo,
 		MastBankAcno: m.MastBankAcno,
+		MastPrindAmt:   m.MastPrindAmt,
+		MemberTypeCode: m.MemberTypeCode,
 	}
 }
 
@@ -183,6 +190,7 @@ func (h *LoanPrintHandler) PeekNextNumber(c *fiber.Ctx) error {
 	}
 
 	return response.Success(c, "Next number", fiber.Map{
+		"formatted":  requestNo,
 		"request_no": requestNo,
 		"seq":        seq,
 		"year":       year,
@@ -211,8 +219,107 @@ func (h *LoanPrintHandler) IssueNextNumber(c *fiber.Ctx) error {
 	}
 
 	return response.Success(c, "Number issued", fiber.Map{
+		"formatted":  requestNo,
 		"request_no": requestNo,
 		"seq":        seq,
 		"year":       year,
 	})
+}
+
+// ============================================================
+// Phase 3b: Collateral endpoint (shares + savings + 95% cap)
+// ============================================================
+
+// CollateralCapPct — สัดส่วนสูงสุดที่ใช้ค้ำได้ (95% ของมูลค่าหุ้นหรือเงินฝาก).
+const CollateralCapPct = 0.95
+
+// ShareCollateralInfo — ทุนเรือนหุ้น
+type ShareCollateralInfo struct {
+	Value         float64 `json:"value"`           // ทุนเรือนหุ้น (mast_prind_amt)
+	MaxCollateral float64 `json:"max_collateral"`  // 95% ของ Value
+}
+
+// SavingsCollateralInfo — บัญชีเงินฝากต่อรายการ
+type SavingsCollateralInfo struct {
+	AccountNo     string  `json:"account_no"`
+	FullName      string  `json:"full_name"`
+	Balance       float64 `json:"balance"`
+	MaxCollateral float64 `json:"max_collateral"` // 95% ของ Balance
+}
+
+// CollateralResponse — รวมข้อมูลค้ำประกันทั้งหมดของสมาชิก
+type CollateralResponse struct {
+	MembNo             string                  `json:"memb_no"`
+	Shares             ShareCollateralInfo     `json:"shares"`
+	Savings            []SavingsCollateralInfo `json:"savings"`
+	TotalSavings       float64                 `json:"total_savings"`
+	TotalMaxCollateral float64                 `json:"total_max_collateral"`
+	CapPct             float64                 `json:"cap_pct"`
+}
+
+// GetCollateral — GET /api/v1/loan-print/collateral/:memb_no
+// คืนข้อมูลค้ำประกัน (ทุนเรือนหุ้น + บัญชีเงินฝาก) พร้อมเพดาน 95% ที่ใช้ค้ำได้
+func (h *LoanPrintHandler) GetCollateral(c *fiber.Ctx) error {
+	membNo := c.Params("memb_no")
+	if membNo == "" {
+		return response.BadRequest(c, "memb_no is required")
+	}
+
+	ctx := c.Context()
+
+	// 1. Get member (for mast_prind_amt)
+	m, err := h.memberRepo.GetFullByMembNo(ctx, membNo)
+	if err != nil {
+		return response.InternalServerError(c, "failed to fetch member: "+err.Error())
+	}
+	if m == nil {
+		return response.NotFound(c, "member not found")
+	}
+
+	// 2. Get savings accounts
+	accounts, err := h.savingsRepo.GetByMembNo(ctx, membNo)
+	if err != nil {
+		return response.InternalServerError(c, "failed to fetch savings: "+err.Error())
+	}
+
+	// 3. Build response with 95% caps
+	shares := ShareCollateralInfo{
+		Value:         m.MastPrindAmt,
+		MaxCollateral: roundFloat(m.MastPrindAmt*CollateralCapPct, 2),
+	}
+
+	savings := make([]SavingsCollateralInfo, 0, len(accounts))
+	var totalBalance float64
+	var totalMaxCollateral float64
+	totalMaxCollateral += shares.MaxCollateral
+
+	for _, a := range accounts {
+		maxC := roundFloat(a.Balance*CollateralCapPct, 2)
+		savings = append(savings, SavingsCollateralInfo{
+			AccountNo:     a.AccountNo,
+			FullName:      a.FullName,
+			Balance:       a.Balance,
+			MaxCollateral: maxC,
+		})
+		totalBalance += a.Balance
+		totalMaxCollateral += maxC
+	}
+
+	return response.Success(c, "Collateral fetched", CollateralResponse{
+		MembNo:             membNo,
+		Shares:             shares,
+		Savings:            savings,
+		TotalSavings:       roundFloat(totalBalance, 2),
+		TotalMaxCollateral: roundFloat(totalMaxCollateral, 2),
+		CapPct:             CollateralCapPct,
+	})
+}
+
+// roundFloat rounds a float to N decimal places
+func roundFloat(val float64, precision int) float64 {
+	pow := 1.0
+	for i := 0; i < precision; i++ {
+		pow *= 10
+	}
+	return float64(int(val*pow+0.5)) / pow
 }

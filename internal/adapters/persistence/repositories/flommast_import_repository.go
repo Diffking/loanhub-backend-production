@@ -42,6 +42,7 @@ type ImportRow struct {
 	MastPosition string  `json:"mast_position"`
 	DeptName     string  `json:"dept_name"`
 	Addr         string  `json:"addr"`
+	MastTel   string  `json:"mast_tel"`
 	MastMobile   string  `json:"mast_mobile"`
 	MastAccNo    string  `json:"mast_acc_no"`
 	MastBankAcno string  `json:"mast_bank_acno"`
@@ -62,6 +63,7 @@ func (r *ImportRow) ToFlommast() *models.Flommast {
 		MastPosition: r.MastPosition,
 		DeptName:     r.DeptName,
 		Addr:         r.Addr,
+		MastTel:   r.MastTel,
 		MastMobile:   r.MastMobile,
 		MastAccNo:    r.MastAccNo,
 		MastBankAcno: r.MastBankAcno,
@@ -121,9 +123,10 @@ var insertRowPattern = regexp.MustCompile(
 		`\s*,\s*'((?:[^']|'')*)'` + // 10: MAST_POSITION
 		`\s*,\s*'((?:[^']|'')*)'` + // 11: DEPT_NAME
 		`\s*,\s*'((?:[^']|'')*)'` + // 12: ADDR
-		`\s*,\s*'([^']*)'` + // 13: MAST_MOBILE
-		`\s*,\s*('[^']*'|NULL)` + // 14: MAST_ACC_NO
-		`\s*,\s*('[^']*'|NULL)` + // 15: MAST_BANK_ACNO
+		`\s*,\s*'([^']*)'` + // 13: MAST_TEL
+		`\s*,\s*'([^']*)'` + // 14: MAST_MOBILE
+		`\s*,\s*('[^']*'|NULL)` + // 15: MAST_ACC_NO
+		`\s*,\s*('[^']*'|NULL)` + // 16: MAST_BANK_ACNO
 		`\s*\)`,
 )
 
@@ -182,14 +185,14 @@ func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 
 		// Parse acc_no (NULL allowed)
 		accNo := ""
-		if m[14] != "NULL" {
-			accNo = strings.Trim(m[14], "'")
+		if m[15] != "NULL" {
+			accNo = strings.Trim(m[15], "'")
 		}
 
 		// Parse bank account (NULL allowed)
 		bankAcno := ""
-		if m[15] != "NULL" {
-			bankAcno = strings.Trim(m[15], "'")
+		if m[16] != "NULL" {
+			bankAcno = strings.Trim(m[16], "'")
 		}
 
 		row := &ImportRow{
@@ -205,7 +208,8 @@ func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 			MastPosition: strings.TrimSpace(position),
 			DeptName:     strings.TrimSpace(deptName),
 			Addr:         strings.TrimSpace(addr),
-			MastMobile:   m[13],
+			MastTel:   m[13],
+			MastMobile:   m[14],
 			MastAccNo:    accNo,
 			MastBankAcno: bankAcno,
 		}

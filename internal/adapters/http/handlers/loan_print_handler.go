@@ -65,6 +65,7 @@ type MemberFullResponse struct {
 	DeptName     string  `json:"dept_name"`
 	Addr         string  `json:"addr"`
 	MastSalary   float64 `json:"mast_salary"`
+	MastTel   string  `json:"mast_tel"`
 	MastMobile   string  `json:"mast_mobile"`
 	MastAccNo    string  `json:"mast_acc_no"`
 	MastBankAcno string  `json:"mast_bank_acno"`
@@ -88,6 +89,7 @@ func toMemberFullResponse(m *models.Flommast) MemberFullResponse {
 		DeptName:     m.DeptName,
 		Addr:         m.Addr,
 		MastSalary:   m.MastSalary,
+		MastTel:   m.MastTel,
 		MastMobile:   m.MastMobile,
 		MastAccNo:    m.MastAccNo,
 		MastBankAcno: m.MastBankAcno,

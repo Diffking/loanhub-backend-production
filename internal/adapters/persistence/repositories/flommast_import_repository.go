@@ -28,16 +28,20 @@ func NewFlommastImportRepository(db *gorm.DB) *FlommastImportRepository {
 }
 
 // ImportRow represents one parsed row from the uploaded .sql
+// Updated Phase 3c: 15 columns (added MastPaidAmt, MastPaidTime, MastMembDept)
 type ImportRow struct {
 	MastMembNo   string  `json:"mast_memb_no"`
 	FullName     string  `json:"full_name"`
 	MastBirthYmd string  `json:"mast_birth_ymd"`
 	MastCardId   string  `json:"mast_card_id"`
+	MastPaidAmt  float64 `json:"mast_paid_amt"`
+	MastPaidTime int     `json:"mast_paid_time"`
+	MastSalary   float64 `json:"mast_salary"`
+	MastMembDept string  `json:"mast_memb_dept"`
 	StsTypeDesc  string  `json:"sts_type_desc"`
 	MastPosition string  `json:"mast_position"`
 	DeptName     string  `json:"dept_name"`
 	Addr         string  `json:"addr"`
-	MastSalary   float64 `json:"mast_salary"`
 	MastMobile   string  `json:"mast_mobile"`
 	MastAccNo    string  `json:"mast_acc_no"`
 	MastBankAcno string  `json:"mast_bank_acno"`
@@ -50,11 +54,14 @@ func (r *ImportRow) ToFlommast() *models.Flommast {
 		FullName:     r.FullName,
 		MastBirthYmd: r.MastBirthYmd,
 		MastCardId:   r.MastCardId,
+		MastPaidAmt:  r.MastPaidAmt,
+		MastPaidTime: r.MastPaidTime,
+		MastSalary:   r.MastSalary,
+		MastMembDept: r.MastMembDept,
 		StsTypeDesc:  r.StsTypeDesc,
 		MastPosition: r.MastPosition,
 		DeptName:     r.DeptName,
 		Addr:         r.Addr,
-		MastSalary:   r.MastSalary,
 		MastMobile:   r.MastMobile,
 		MastAccNo:    r.MastAccNo,
 		MastBankAcno: r.MastBankAcno,
@@ -95,23 +102,28 @@ const MaxPreviewEntries = 200
 // SQL Parser — รองรับ MS SQL Server INSERT format จาก flommast3.sql
 // ============================================================
 
-// rowPattern matches:
-// INSERT INTO [...] (cols...) VALUES ('memb_no', 'full_name', 'birth', 'card', 'sts', 'pos', 'dept', 'addr', salary, 'mobile', 'acc_no', bank);
-// where bank can be: 'value', ”, or NULL (no quotes)
+// insertRowPattern matches the new 15-column SQL dump (Phase 3c):
+// VALUES ('memb_no', 'name', 'birth', 'card',
+//         paid_amt, paid_time, salary, 'memb_dept',
+//         'sts', 'pos', 'dept', 'addr',
+//         'mobile', acc_no, bank_acno)
 var insertRowPattern = regexp.MustCompile(
 	`(?s)VALUES\s*\(` +
 		`\s*'([^']*)'` + // 1: MAST_MEMB_NO
-		`\s*,\s*'((?:[^']|'')*)'` + // 2: Full_Name (allow doubled quotes)
+		`\s*,\s*'((?:[^']|'')*)'` + // 2: Full_Name
 		`\s*,\s*'([^']*)'` + // 3: MAST_BIRTH_YMD
 		`\s*,\s*'([^']*)'` + // 4: MAST_CARD_ID
-		`\s*,\s*'((?:[^']|'')*)'` + // 5: STS_TYPE_DESC
-		`\s*,\s*'((?:[^']|'')*)'` + // 6: MAST_POSITION
-		`\s*,\s*'((?:[^']|'')*)'` + // 7: DEPT_NAME
-		`\s*,\s*'((?:[^']|'')*)'` + // 8: ADDR
-		`\s*,\s*([\d.]+|NULL)` + // 9: MAST_SALARY
-		`\s*,\s*'([^']*)'` + // 10: MAST_MOBILE
-		`\s*,\s*('[^']*'|NULL)` + // 11: MAST_ACC_NO (quoted or NULL)
-		`\s*,\s*('[^']*'|NULL)` + // 12: MAST_BANK_ACNO (quoted or NULL)
+		`\s*,\s*([\d.]+|NULL)` + // 5: MAST_PAID_AMT
+		`\s*,\s*(\d+|NULL)` + // 6: MAST_PAID_TIME (int)
+		`\s*,\s*([\d.]+|NULL)` + // 7: MAST_SALARY
+		`\s*,\s*'([^']*)'` + // 8: MAST_MEMB_DEPT
+		`\s*,\s*'((?:[^']|'')*)'` + // 9: STS_TYPE_DESC
+		`\s*,\s*'((?:[^']|'')*)'` + // 10: MAST_POSITION
+		`\s*,\s*'((?:[^']|'')*)'` + // 11: DEPT_NAME
+		`\s*,\s*'((?:[^']|'')*)'` + // 12: ADDR
+		`\s*,\s*'([^']*)'` + // 13: MAST_MOBILE
+		`\s*,\s*('[^']*'|NULL)` + // 14: MAST_ACC_NO
+		`\s*,\s*('[^']*'|NULL)` + // 15: MAST_BANK_ACNO
 		`\s*\)`,
 )
 
@@ -128,34 +140,56 @@ func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 	seen := make(map[string]bool)
 
 	for i, m := range matches {
-		// Unescape doubled single quotes
+		// Unescape doubled single quotes (new column indexes for 15-column format)
 		fullName := strings.ReplaceAll(m[2], "''", "'")
-		stsType := strings.ReplaceAll(m[5], "''", "'")
-		position := strings.ReplaceAll(m[6], "''", "'")
-		deptName := strings.ReplaceAll(m[7], "''", "'")
-		addr := strings.ReplaceAll(m[8], "''", "'")
+		stsType := strings.ReplaceAll(m[9], "''", "'")
+		position := strings.ReplaceAll(m[10], "''", "'")
+		deptName := strings.ReplaceAll(m[11], "''", "'")
+		addr := strings.ReplaceAll(m[12], "''", "'")
 
-		// Parse salary
-		var salary float64
-		if m[9] != "NULL" {
-			s, err := strconv.ParseFloat(m[9], 64)
+		// Parse MAST_PAID_AMT (decimal/NULL)
+		var paidAmt float64
+		if m[5] != "NULL" {
+			v, err := strconv.ParseFloat(m[5], 64)
 			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid salary '%s'", i+1, m[1], m[9]))
+				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid paid_amt '%s'", i+1, m[1], m[5]))
 				continue
 			}
-			salary = s
+			paidAmt = v
+		}
+
+		// Parse MAST_PAID_TIME (int/NULL)
+		var paidTime int
+		if m[6] != "NULL" {
+			v, err := strconv.Atoi(m[6])
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid paid_time '%s'", i+1, m[1], m[6]))
+				continue
+			}
+			paidTime = v
+		}
+
+		// Parse MAST_SALARY (decimal/NULL)
+		var salary float64
+		if m[7] != "NULL" {
+			v, err := strconv.ParseFloat(m[7], 64)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid salary '%s'", i+1, m[1], m[7]))
+				continue
+			}
+			salary = v
 		}
 
 		// Parse acc_no (NULL allowed)
 		accNo := ""
-		if m[11] != "NULL" {
-			accNo = strings.Trim(m[11], "'")
+		if m[14] != "NULL" {
+			accNo = strings.Trim(m[14], "'")
 		}
 
 		// Parse bank account (NULL allowed)
 		bankAcno := ""
-		if m[12] != "NULL" {
-			bankAcno = strings.Trim(m[12], "'")
+		if m[15] != "NULL" {
+			bankAcno = strings.Trim(m[15], "'")
 		}
 
 		row := &ImportRow{
@@ -163,12 +197,15 @@ func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 			FullName:     strings.TrimSpace(fullName),
 			MastBirthYmd: m[3],
 			MastCardId:   m[4],
+			MastPaidAmt:  paidAmt,
+			MastPaidTime: paidTime,
+			MastSalary:   salary,
+			MastMembDept: strings.TrimSpace(m[8]),
 			StsTypeDesc:  strings.TrimSpace(stsType),
 			MastPosition: strings.TrimSpace(position),
 			DeptName:     strings.TrimSpace(deptName),
 			Addr:         strings.TrimSpace(addr),
-			MastSalary:   salary,
-			MastMobile:   m[10],
+			MastMobile:   m[13],
 			MastAccNo:    accNo,
 			MastBankAcno: bankAcno,
 		}
@@ -276,6 +313,21 @@ func compareRows(current *models.Flommast, up *ImportRow) []FieldChange {
 	add("full_name", current.FullName, up.FullName)
 	add("mast_birth_ymd", current.MastBirthYmd, up.MastBirthYmd)
 	add("mast_card_id", current.MastCardId, up.MastCardId)
+	add("mast_memb_dept", current.MastMembDept, up.MastMembDept)
+	if current.MastPaidAmt != up.MastPaidAmt {
+		changes = append(changes, FieldChange{
+			Field: "mast_paid_amt",
+			Old:   strconv.FormatFloat(current.MastPaidAmt, 'f', 2, 64),
+			New:   strconv.FormatFloat(up.MastPaidAmt, 'f', 2, 64),
+		})
+	}
+	if current.MastPaidTime != up.MastPaidTime {
+		changes = append(changes, FieldChange{
+			Field: "mast_paid_time",
+			Old:   strconv.Itoa(current.MastPaidTime),
+			New:   strconv.Itoa(up.MastPaidTime),
+		})
+	}
 	add("sts_type_desc", current.StsTypeDesc, up.StsTypeDesc)
 	add("mast_position", current.MastPosition, up.MastPosition)
 	add("dept_name", current.DeptName, up.DeptName)

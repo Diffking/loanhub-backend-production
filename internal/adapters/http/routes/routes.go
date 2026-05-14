@@ -108,7 +108,8 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	appCounterRepo := repositories.NewAppCounterRepository(db)
 
 	// Phase 1 (Loan Print): handlers
-	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo, appCounterRepo)
+	savingsRepo := repositories.NewSavingsRepository(db)
+	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo, appCounterRepo, savingsRepo)
 	flommastImportHandler := handlers.NewFlommastImportHandler(flommastImportRepo)
 
 	// Health check & root routes
@@ -350,6 +351,8 @@ func setupLoanPrintRoutes(router fiber.Router, handler *handlers.LoanPrintHandle
 	// Phase 3a: Auto-numbering
 	router.Get("/next-number", handler.PeekNextNumber)
 	router.Post("/issue-number", handler.IssueNextNumber)
+	// Phase 3b: Collateral endpoint
+	router.Get("/collateral/:memb_no", handler.GetCollateral)
 }
 
 // ============================================================

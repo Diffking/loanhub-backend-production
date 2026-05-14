@@ -95,6 +95,13 @@ type Flommast struct {
 	MastMobile   string  `gorm:"column:mast_mobile;size:50" json:"mast_mobile"`
 	MastAccNo    string  `gorm:"column:mast_acc_no;size:30" json:"mast_acc_no"`
 	MastBankAcno string  `gorm:"column:mast_bank_acno;size:30" json:"mast_bank_acno"`
+	// 🆕 Phase 3c: Member share info (สำหรับใบคำขอกู้)
+	MastPaidAmt    float64 `gorm:"column:mast_paid_amt;type:decimal(13,2);not null;default:0.00" json:"mast_paid_amt"`
+	MastPaidTime   int     `gorm:"column:mast_paid_time;not null;default:0" json:"mast_paid_time"`
+	MastMembDept   string  `gorm:"column:mast_memb_dept;size:20;not null;default:''" json:"mast_memb_dept"`
+	// 🆕 Phase 3b: Loan collateral
+	MastPrindAmt   float64 `gorm:"column:mast_prind_amt;type:decimal(13,2);default:0.00" json:"mast_prind_amt"`
+	MemberTypeCode string  `gorm:"column:member_type_code;size:10;default:'';index" json:"member_type_code"`
 
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at,omitempty"`
 }
@@ -551,3 +558,27 @@ const (
 	AppCounterKindLoanPrint = "loan_print"
 )
 
+
+// ============================================================
+// Phase 3b: Savings accounts (for loan collateral)
+// ============================================================
+
+// SavingsAccount — บัญชีเงินฝากของสมาชิก ใช้สำหรับค้ำประกันเงินกู้.
+// Phase 3b: ค้ำประกันด้วยเงินฝากออมทรัพย์ — ใช้ได้ไม่เกิน 95% ของยอดคงเหลือ.
+//
+// Indexes:
+//   - mast_memb_no (lookup)
+//   - (mast_memb_no, account_no) UNIQUE — ป้องกันบัญชีซ้ำ
+type SavingsAccount struct {
+	ID         uint64    `gorm:"primaryKey" json:"id"`
+	MastMembNo string    `gorm:"column:mast_memb_no;size:20;not null;index;uniqueIndex:uk_member_account,priority:1" json:"mast_memb_no"`
+	FullName   string    `gorm:"column:full_name;size:255;not null;default:''" json:"full_name"`
+	AccountNo  string    `gorm:"column:account_no;size:20;not null;uniqueIndex:uk_member_account,priority:2" json:"account_no"`
+	Balance    float64   `gorm:"column:balance;type:decimal(15,4);not null;default:0" json:"balance"`
+	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt  time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (SavingsAccount) TableName() string {
+	return "savings_accounts"
+}

@@ -45,3 +45,11 @@ type MemberRepository interface {
 	GetFullByMembNo(ctx context.Context, membNo string) (*models.Flommast, error)
 	CountActive(ctx context.Context) (int64, error)
 }
+
+// SavingsRepository defines savings_accounts repository interface.
+// Phase 3b: ใช้ดึงข้อมูลบัญชีเงินฝากของสมาชิกเพื่อคำนวณค้ำประกันเงินกู้ (cap 95%).
+type SavingsRepository interface {
+	GetByMembNo(ctx context.Context, membNo string) ([]*models.SavingsAccount, error)
+	CountByMembNo(ctx context.Context, membNo string) (int64, error)
+	TotalBalance(ctx context.Context, membNo string) (float64, error)
+}

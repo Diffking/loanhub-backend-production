@@ -68,6 +68,10 @@ type MemberFullResponse struct {
 	MastMobile   string  `json:"mast_mobile"`
 	MastAccNo    string  `json:"mast_acc_no"`
 	MastBankAcno string  `json:"mast_bank_acno"`
+	// 🆕 Phase 3c: Member share info จาก MS SQL
+	MastPaidAmt    float64 `json:"mast_paid_amt"`
+	MastPaidTime   int     `json:"mast_paid_time"`
+	MastMembDept   string  `json:"mast_memb_dept"`
 	MastPrindAmt   float64 `json:"mast_prind_amt"`
 	MemberTypeCode string  `json:"member_type_code"`
 }
@@ -87,6 +91,9 @@ func toMemberFullResponse(m *models.Flommast) MemberFullResponse {
 		MastMobile:   m.MastMobile,
 		MastAccNo:    m.MastAccNo,
 		MastBankAcno: m.MastBankAcno,
+		MastPaidAmt:    m.MastPaidAmt,
+		MastPaidTime:   m.MastPaidTime,
+		MastMembDept:   m.MastMembDept,
 		MastPrindAmt:   m.MastPrindAmt,
 		MemberTypeCode: m.MemberTypeCode,
 	}
@@ -283,9 +290,10 @@ func (h *LoanPrintHandler) GetCollateral(c *fiber.Ctx) error {
 	}
 
 	// 3. Build response with 95% caps
+	// Phase 3c: ใช้ MastPaidAmt (ทุนเรือนหุ้นจาก MS SQL) แทน MastPrindAmt
 	shares := ShareCollateralInfo{
-		Value:         m.MastPrindAmt,
-		MaxCollateral: roundFloat(m.MastPrindAmt*CollateralCapPct, 2),
+		Value:         m.MastPaidAmt,
+		MaxCollateral: roundFloat(m.MastPaidAmt*CollateralCapPct, 2),
 	}
 
 	savings := make([]SavingsCollateralInfo, 0, len(accounts))

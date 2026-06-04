@@ -7,6 +7,7 @@ services:
     environment:
       - APP_MODE=prod
       - PORT=3000
+      - SYNC_API_KEY=abf5d2637a3290bd8824ab6eb053549c220cce08e1ff4d8cb1f2b248cb1e7211
       # Database
       - PROD_DB_HOST=127.0.0.1
       - PROD_DB_PORT=3306

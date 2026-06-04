@@ -111,6 +111,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	savingsRepo := repositories.NewSavingsRepository(db)
 	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo, appCounterRepo, savingsRepo)
 	flommastImportHandler := handlers.NewFlommastImportHandler(flommastImportRepo)
+	flommastSyncHandler := handlers.NewFlommastSyncHandler(flommastImportRepo, db)
 
 	// Health check & root routes
 	app.Get("/", healthHandler.Root)
@@ -123,7 +124,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
 		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler,
-		loanPrintHandler, flommastImportHandler, cfg)
+		loanPrintHandler, flommastImportHandler, flommastSyncHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -144,6 +145,7 @@ func setupAPIV1Routes(
 	docCheckHandler *handlers.DocCheckHandler,
 	loanPrintHandler *handlers.LoanPrintHandler,
 	flommastImportHandler *handlers.FlommastImportHandler,
+	flommastSyncHandler *handlers.FlommastSyncHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -198,11 +200,27 @@ func setupAPIV1Routes(
 	loanPrintRoutes.Use(middleware.OfficerOrAdmin())
 	setupLoanPrintRoutes(loanPrintRoutes, loanPrintHandler)
 
+	// Phase 2 (Flommast Sync — agent push): API Key auth
+	//   MUST be registered BEFORE the /admin/flommast JWT group below,
+	//   otherwise Fiber's prefix-Use middleware runs JWT check first.
+	router.Post("/admin/flommast/sync",
+		middleware.APIKeyAuth(cfg),
+		flommastSyncHandler.Sync,
+	)
+
 	// Phase 1 (Flommast Import): Admin only
 	flommastAdminRoutes := router.Group("/admin/flommast")
 	flommastAdminRoutes.Use(middleware.AuthMiddleware(cfg))
 	flommastAdminRoutes.Use(middleware.AdminOnly())
 	setupFlommastImportRoutes(flommastAdminRoutes, flommastImportHandler)
+
+	// Phase 2 (Flommast Sync — admin UI endpoints): JWT/Admin
+	flommastAdminRoutes.Get("/sync-history", flommastSyncHandler.History)
+	flommastAdminRoutes.Get("/sync-status", flommastSyncHandler.Status)
+
+	// Phase 3A (Missing members — list + bulk delete): JWT/Admin
+	flommastAdminRoutes.Get("/missing", flommastSyncHandler.Missing)
+	flommastAdminRoutes.Delete("/missing", flommastSyncHandler.DeleteMissing)
 }
 
 // setupAuthRoutes configures authentication routes

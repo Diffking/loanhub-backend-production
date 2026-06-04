@@ -28,7 +28,10 @@ func NewFlommastImportRepository(db *gorm.DB) *FlommastImportRepository {
 }
 
 // ImportRow represents one parsed row from the uploaded .sql
-// Updated Phase 3c: 15 columns (added MastPaidAmt, MastPaidTime, MastMembDept)
+// Phase 3c: 16 columns including MastTel.
+// Fix (perd-swap): SQL export ใหม่ใช้ลำดับ col 5 = MAST_PAID_PERD (int, → mast_paid_time)
+//                  col 6 = MAST_PAID_AMT (decimal). ก่อนหน้านี้ regex สลับลำดับทำให้ทุก row fail
+//                  เพราะ \d+ ไม่ match decimal point ใน 1037070.0000
 type ImportRow struct {
 	MastMembNo   string  `json:"mast_memb_no"`
 	FullName     string  `json:"full_name"`
@@ -42,7 +45,7 @@ type ImportRow struct {
 	MastPosition string  `json:"mast_position"`
 	DeptName     string  `json:"dept_name"`
 	Addr         string  `json:"addr"`
-	MastTel   string  `json:"mast_tel"`
+	MastTel      string  `json:"mast_tel"`
 	MastMobile   string  `json:"mast_mobile"`
 	MastAccNo    string  `json:"mast_acc_no"`
 	MastBankAcno string  `json:"mast_bank_acno"`
@@ -63,7 +66,7 @@ func (r *ImportRow) ToFlommast() *models.Flommast {
 		MastPosition: r.MastPosition,
 		DeptName:     r.DeptName,
 		Addr:         r.Addr,
-		MastTel:   r.MastTel,
+		MastTel:      r.MastTel,
 		MastMobile:   r.MastMobile,
 		MastAccNo:    r.MastAccNo,
 		MastBankAcno: r.MastBankAcno,
@@ -101,22 +104,36 @@ type DiffSummary struct {
 const MaxPreviewEntries = 200
 
 // ============================================================
-// SQL Parser — รองรับ MS SQL Server INSERT format จาก flommast3.sql
+// SQL Parser — รองรับ MS SQL Server INSERT format
 // ============================================================
 
-// insertRowPattern matches the new 15-column SQL dump (Phase 3c):
-// VALUES ('memb_no', 'name', 'birth', 'card',
-//         paid_amt, paid_time, salary, 'memb_dept',
-//         'sts', 'pos', 'dept', 'addr',
-//         'mobile', acc_no, bank_acno)
+// insertRowPattern matches the 16-column SQL dump.
+// SQL column order (จาก export ใหม่ของ MS SQL Server):
+//
+//	1: MAST_MEMB_NO       'string'
+//	2: Full_Name          'string'
+//	3: MAST_BIRTH_YMD     'string'
+//	4: MAST_CARD_ID       'string'
+//	5: MAST_PAID_PERD     int        → struct.MastPaidTime  (จำนวนงวด)
+//	6: MAST_PAID_AMT      decimal    → struct.MastPaidAmt   (ทุนเรือนหุ้นสะสม)
+//	7: MAST_SALARY        decimal
+//	8: MAST_MEMB_DEPT     'string'
+//	9: STS_TYPE_DESC      'string'
+//	10: MAST_POSITION     'string'
+//	11: DEPT_NAME         'string'
+//	12: ADDR              'string'
+//	13: MAST_TEL          'string'
+//	14: MAST_MOBILE       'string'
+//	15: MAST_ACC_NO       'string' or NULL
+//	16: MAST_BANK_ACNO    'string' or NULL
 var insertRowPattern = regexp.MustCompile(
 	`(?s)VALUES\s*\(` +
 		`\s*'([^']*)'` + // 1: MAST_MEMB_NO
 		`\s*,\s*'((?:[^']|'')*)'` + // 2: Full_Name
 		`\s*,\s*'([^']*)'` + // 3: MAST_BIRTH_YMD
 		`\s*,\s*'([^']*)'` + // 4: MAST_CARD_ID
-		`\s*,\s*([\d.]+|NULL)` + // 5: MAST_PAID_AMT
-		`\s*,\s*(\d+|NULL)` + // 6: MAST_PAID_TIME (int)
+		`\s*,\s*(\d+|NULL)` + // 5: MAST_PAID_PERD (int) → mast_paid_time
+		`\s*,\s*([\d.]+|NULL)` + // 6: MAST_PAID_AMT (decimal) → mast_paid_amt
 		`\s*,\s*([\d.]+|NULL)` + // 7: MAST_SALARY
 		`\s*,\s*'([^']*)'` + // 8: MAST_MEMB_DEPT
 		`\s*,\s*'((?:[^']|'')*)'` + // 9: STS_TYPE_DESC
@@ -135,7 +152,7 @@ var insertRowPattern = regexp.MustCompile(
 func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 	matches := insertRowPattern.FindAllStringSubmatch(sql, -1)
 	if len(matches) == 0 {
-		return nil, nil, fmt.Errorf("no INSERT rows found — รองรับเฉพาะรูปแบบ flommast3.sql")
+		return nil, nil, fmt.Errorf("no INSERT rows found — รองรับเฉพาะรูปแบบ flommast3.sql (16 columns)")
 	}
 
 	rows := make([]*ImportRow, 0, len(matches))
@@ -143,33 +160,33 @@ func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 	seen := make(map[string]bool)
 
 	for i, m := range matches {
-		// Unescape doubled single quotes (new column indexes for 15-column format)
+		// Unescape doubled single quotes
 		fullName := strings.ReplaceAll(m[2], "''", "'")
 		stsType := strings.ReplaceAll(m[9], "''", "'")
 		position := strings.ReplaceAll(m[10], "''", "'")
 		deptName := strings.ReplaceAll(m[11], "''", "'")
 		addr := strings.ReplaceAll(m[12], "''", "'")
 
-		// Parse MAST_PAID_AMT (decimal/NULL)
-		var paidAmt float64
-		if m[5] != "NULL" {
-			v, err := strconv.ParseFloat(m[5], 64)
-			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid paid_amt '%s'", i+1, m[1], m[5]))
-				continue
-			}
-			paidAmt = v
-		}
-
-		// Parse MAST_PAID_TIME (int/NULL)
+		// Parse MAST_PAID_PERD (int/NULL) — SQL col 5 → mast_paid_time
 		var paidTime int
-		if m[6] != "NULL" {
-			v, err := strconv.Atoi(m[6])
+		if m[5] != "NULL" {
+			v, err := strconv.Atoi(m[5])
 			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid paid_time '%s'", i+1, m[1], m[6]))
+				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid paid_perd '%s'", i+1, m[1], m[5]))
 				continue
 			}
 			paidTime = v
+		}
+
+		// Parse MAST_PAID_AMT (decimal/NULL) — SQL col 6 → mast_paid_amt
+		var paidAmt float64
+		if m[6] != "NULL" {
+			v, err := strconv.ParseFloat(m[6], 64)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("row %d (%s): invalid paid_amt '%s'", i+1, m[1], m[6]))
+				continue
+			}
+			paidAmt = v
 		}
 
 		// Parse MAST_SALARY (decimal/NULL)
@@ -208,7 +225,7 @@ func ParseSQL(sql string) ([]*ImportRow, []string, error) {
 			MastPosition: strings.TrimSpace(position),
 			DeptName:     strings.TrimSpace(deptName),
 			Addr:         strings.TrimSpace(addr),
-			MastTel:   m[13],
+			MastTel:      m[13],
 			MastMobile:   m[14],
 			MastAccNo:    accNo,
 			MastBankAcno: bankAcno,

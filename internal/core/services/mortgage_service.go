@@ -3,6 +3,9 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"spsc-loaneasy/internal/adapters/persistence/models"
@@ -35,6 +38,8 @@ type MortgageService struct {
 	memberRepo      repositories.MemberRepository
 	userRepo        repositories.UserRepository
 	notifyService   *NotificationService
+	committeeRepo   repositories.CommitteeRepository
+	lineService     *LINEService
 }
 
 func NewMortgageService(
@@ -47,6 +52,8 @@ func NewMortgageService(
 	memberRepo repositories.MemberRepository,
 	userRepo repositories.UserRepository,
 	notifyService *NotificationService,
+	committeeRepo repositories.CommitteeRepository,
+	lineService *LINEService,
 ) *MortgageService {
 	return &MortgageService{
 		mortgageRepo:    mortgageRepo,
@@ -58,6 +65,8 @@ func NewMortgageService(
 		memberRepo:      memberRepo,
 		userRepo:        userRepo,
 		notifyService:   notifyService,
+		committeeRepo:   committeeRepo,
+		lineService:     lineService,
 	}
 }
 
@@ -437,7 +446,56 @@ func (s *MortgageService) CreateAppt(ctx context.Context, mortgageID uint, input
 		s.notifyService.NotifyNewAppointment(mortgage, loanAppt.Name, input.ApptDate)
 	}
 
+	// Phase 7: เมื่อนัดเซ็นสัญญาจำนอง (SIGN_CONTRACT) แจ้งกรรมการที่ active ทุกคน
+	// ทาง LINE ให้ทราบสถานที่/วันเวลา เพื่อให้เข้าร่วมได้
+	if loanAppt.Code == "SIGN_CONTRACT" {
+		s.notifyCommitteeOfContractSigning(ctx, mortgage, input.ApptTime, location)
+	}
+
 	return mortgage, nil
+}
+
+// notifyCommitteeOfContractSigning pushes a LINE text message to every
+// active committee member with a linked LINE account. Best-effort: failures
+// are logged, never block the appointment-creation flow.
+func (s *MortgageService) notifyCommitteeOfContractSigning(ctx context.Context, mortgage *models.Mortgage, apptTime, location string) {
+	if s.committeeRepo == nil || s.lineService == nil {
+		return
+	}
+
+	channelAccessToken := os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
+	if channelAccessToken == "" {
+		return
+	}
+
+	recipients, err := s.committeeRepo.ListActiveRecipients(ctx)
+	if err != nil || len(recipients) == 0 {
+		return
+	}
+
+	borrowerName := mortgage.MembNo
+	if member, err := s.memberRepo.GetByMembNo(ctx, mortgage.MembNo); err == nil {
+		borrowerName = member.FullName
+	}
+
+	apptDateStr := ""
+	if mortgage.ApptDate != nil {
+		apptDateStr = mortgage.ApptDate.Format("02/01/2006")
+	}
+	if apptTime == "" {
+		apptTime = "กรุณาตรวจสอบในระบบ"
+	}
+
+	message := fmt.Sprintf(
+		"📋 แจ้งเตือนกรรมการ\n\nสมาชิก %s ได้นัดเซ็นสัญญาจำนองแล้ว\n\n📆 วันที่: %s\n⏰ เวลา: %s\n📍 สถานที่: %s",
+		borrowerName, apptDateStr, apptTime, location,
+	)
+
+	for _, r := range recipients {
+		if err := s.lineService.SendPushMessage(r.LineUserID, message, channelAccessToken); err != nil {
+			log.Printf("❌ Failed to notify committee member %s: %v", r.MembNo, err)
+		}
+	}
 }
 
 func (s *MortgageService) CompleteAppt(ctx context.Context, mortgageID uint, apptID uint, userID uint, ipAddress string) error {

@@ -56,6 +56,16 @@ type CommitteeRepository interface {
 	GetActiveByMembNo(ctx context.Context, membNo string) (*models.CommitteeMember, error)
 	IsActiveMember(ctx context.Context, membNo string) (bool, error)
 	Deactivate(ctx context.Context, id uint, removedBy uint) error
+	ListActiveRecipients(ctx context.Context) ([]CommitteeRecipient, error)
+}
+
+// CommitteeRecipient is a LINE-push recipient resolved by joining active
+// committee_members to users (line_user_id isn't mapped on the User model —
+// see member_repository.go convention — so this is a raw-query result).
+type CommitteeRecipient struct {
+	MembNo     string
+	FullName   string
+	LineUserID string
 }
 
 // CommitteeVisibilityRepository manages the singleton committee_visibility_settings row.

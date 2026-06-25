@@ -91,6 +91,25 @@ func (r *committeeRepository) Deactivate(ctx context.Context, id uint, removedBy
 		}).Error
 }
 
+// ListActiveRecipients resolves active committee members who have a linked
+// LINE account, for push notifications.
+func (r *committeeRepository) ListActiveRecipients(ctx context.Context) ([]CommitteeRecipient, error) {
+	var recipients []CommitteeRecipient
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT cm.memb_no AS memb_no,
+		       COALESCE(f.full_name, u.username) AS full_name,
+		       u.line_user_id AS line_user_id
+		FROM committee_members cm
+		JOIN users u ON u.memb_no = cm.memb_no
+		LEFT JOIN flommast f ON f.mast_memb_no = cm.memb_no
+		WHERE cm.is_active = 1
+		  AND cm.deleted_at IS NULL
+		  AND u.line_user_id IS NOT NULL
+		  AND u.line_user_id != ''
+	`).Scan(&recipients).Error
+	return recipients, err
+}
+
 // committeeVisibilityRepository implements CommitteeVisibilityRepository.
 type committeeVisibilityRepository struct {
 	db *gorm.DB

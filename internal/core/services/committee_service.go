@@ -22,21 +22,50 @@ var (
 // CommitteeService handles คณะกรรมการ designations and the borrower-list
 // aggregate view they're granted access to.
 type CommitteeService struct {
-	committeeRepo repositories.CommitteeRepository
-	memberRepo    repositories.MemberRepository
-	mortgageRepo  *repositories.MortgageRepository
+	committeeRepo  repositories.CommitteeRepository
+	memberRepo     repositories.MemberRepository
+	mortgageRepo   *repositories.MortgageRepository
+	visibilityRepo repositories.CommitteeVisibilityRepository
 }
 
 func NewCommitteeService(
 	committeeRepo repositories.CommitteeRepository,
 	memberRepo repositories.MemberRepository,
 	mortgageRepo *repositories.MortgageRepository,
+	visibilityRepo repositories.CommitteeVisibilityRepository,
 ) *CommitteeService {
 	return &CommitteeService{
-		committeeRepo: committeeRepo,
-		memberRepo:    memberRepo,
-		mortgageRepo:  mortgageRepo,
+		committeeRepo:  committeeRepo,
+		memberRepo:     memberRepo,
+		mortgageRepo:   mortgageRepo,
+		visibilityRepo: visibilityRepo,
 	}
+}
+
+// GetVisibility returns the current borrower-field visibility settings.
+func (s *CommitteeService) GetVisibility(ctx context.Context) (*models.CommitteeVisibilitySetting, error) {
+	return s.visibilityRepo.Get(ctx)
+}
+
+type UpdateVisibilityInput struct {
+	ShowBorrowerName bool `json:"show_borrower_name"`
+	ShowMembNo       bool `json:"show_memb_no"`
+	ShowAmount       bool `json:"show_amount"`
+	ShowLoanStatus   bool `json:"show_loan_status"`
+}
+
+// UpdateVisibility saves new borrower-field visibility settings.
+func (s *CommitteeService) UpdateVisibility(ctx context.Context, input *UpdateVisibilityInput) (*models.CommitteeVisibilitySetting, error) {
+	setting := &models.CommitteeVisibilitySetting{
+		ShowBorrowerName: input.ShowBorrowerName,
+		ShowMembNo:       input.ShowMembNo,
+		ShowAmount:       input.ShowAmount,
+		ShowLoanStatus:   input.ShowLoanStatus,
+	}
+	if err := s.visibilityRepo.Update(ctx, setting); err != nil {
+		return nil, err
+	}
+	return setting, nil
 }
 
 type AddCommitteeMemberInput struct {
@@ -136,13 +165,16 @@ func (s *CommitteeService) IsActiveMember(ctx context.Context, membNo string) (b
 	return s.committeeRepo.IsActiveMember(ctx, membNo)
 }
 
+// BorrowerRow's optional fields are pointers so that fields hidden by
+// CommitteeVisibilitySetting serialize as null instead of a misleading
+// zero value (empty string / 0).
 type BorrowerRow struct {
 	MortgageID   uint      `json:"mortgage_id"`
-	MembNo       string    `json:"memb_no"`
-	BorrowerName string    `json:"borrower_name"`
-	Amount       float64   `json:"amount"`
-	LoanTypeName string    `json:"loan_type_name"`
-	StepName     string    `json:"step_name"`
+	MembNo       *string   `json:"memb_no"`
+	BorrowerName *string   `json:"borrower_name"`
+	Amount       *float64  `json:"amount"`
+	LoanTypeName *string   `json:"loan_type_name"`
+	StepName     *string   `json:"step_name"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -179,22 +211,35 @@ func (s *CommitteeService) ListBorrowersByMonth(ctx context.Context, requesterMe
 		return nil, err
 	}
 
+	visibility, err := s.visibilityRepo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	borrowers := make([]*BorrowerRow, 0, len(mortgages))
 	for _, m := range mortgages {
 		row := &BorrowerRow{
 			MortgageID: m.ID,
-			MembNo:     m.MembNo,
-			Amount:     m.Amount,
 			CreatedAt:  m.CreatedAt,
 		}
-		if member, err := s.memberRepo.GetByMembNo(ctx, m.MembNo); err == nil {
-			row.BorrowerName = member.FullName
+		if visibility.ShowMembNo {
+			row.MembNo = &m.MembNo
 		}
-		if m.LoanType != nil {
-			row.LoanTypeName = m.LoanType.Name
+		if visibility.ShowAmount {
+			row.Amount = &m.Amount
 		}
-		if m.CurrentStep != nil {
-			row.StepName = m.CurrentStep.Name
+		if visibility.ShowBorrowerName {
+			if member, err := s.memberRepo.GetByMembNo(ctx, m.MembNo); err == nil {
+				row.BorrowerName = &member.FullName
+			}
+		}
+		if visibility.ShowLoanStatus {
+			if m.LoanType != nil {
+				row.LoanTypeName = &m.LoanType.Name
+			}
+			if m.CurrentStep != nil {
+				row.StepName = &m.CurrentStep.Name
+			}
 		}
 		borrowers = append(borrowers, row)
 	}

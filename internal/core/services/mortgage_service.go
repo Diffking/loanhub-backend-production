@@ -302,6 +302,9 @@ func (s *MortgageService) Approve(ctx context.Context, mortgageID uint, input *A
 		s.notifyService.NotifyApproved(mortgage)
 	}
 
+	// Phase 7: แจ้งกรรมการที่ active ทุกคนทาง LINE เมื่อสินเชื่ออนุมัติแล้ว
+	s.notifyCommitteeOfApproval(ctx, mortgage)
+
 	return mortgage, nil
 }
 
@@ -456,27 +459,11 @@ func (s *MortgageService) CreateAppt(ctx context.Context, mortgageID uint, input
 }
 
 // notifyCommitteeOfContractSigning pushes a LINE text message to every
-// active committee member with a linked LINE account. Best-effort: failures
-// are logged, never block the appointment-creation flow.
+// active committee member with a linked LINE account, with the
+// appointment's date/time/location. Best-effort: failures are logged, never
+// block the appointment-creation flow.
 func (s *MortgageService) notifyCommitteeOfContractSigning(ctx context.Context, mortgage *models.Mortgage, apptTime, location string) {
-	if s.committeeRepo == nil || s.lineService == nil {
-		return
-	}
-
-	channelAccessToken := os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
-	if channelAccessToken == "" {
-		return
-	}
-
-	recipients, err := s.committeeRepo.ListActiveRecipients(ctx)
-	if err != nil || len(recipients) == 0 {
-		return
-	}
-
-	borrowerName := mortgage.MembNo
-	if member, err := s.memberRepo.GetByMembNo(ctx, mortgage.MembNo); err == nil {
-		borrowerName = member.FullName
-	}
+	borrowerName := s.resolveBorrowerName(ctx, mortgage.MembNo)
 
 	apptDateStr := ""
 	if mortgage.ApptDate != nil {
@@ -490,6 +477,48 @@ func (s *MortgageService) notifyCommitteeOfContractSigning(ctx context.Context, 
 		"📋 แจ้งเตือนกรรมการ\n\nสมาชิก %s ได้นัดเซ็นสัญญาจำนองแล้ว\n\n📆 วันที่: %s\n⏰ เวลา: %s\n📍 สถานที่: %s",
 		borrowerName, apptDateStr, apptTime, location,
 	)
+	s.notifyCommittee(ctx, message)
+}
+
+// notifyCommitteeOfApproval pushes a LINE text message to every active
+// committee member when a mortgage is approved (before a signing
+// appointment necessarily exists yet).
+func (s *MortgageService) notifyCommitteeOfApproval(ctx context.Context, mortgage *models.Mortgage) {
+	borrowerName := s.resolveBorrowerName(ctx, mortgage.MembNo)
+
+	message := fmt.Sprintf(
+		"✅ แจ้งเตือนกรรมการ\n\nสมาชิก %s ได้รับการอนุมัติสินเชื่อแล้ว\nรอนัดจำนองและทำสัญญาต่อไป",
+		borrowerName,
+	)
+	s.notifyCommittee(ctx, message)
+}
+
+// resolveBorrowerName resolves a member's full name, falling back to their
+// memb_no if Flommast lookup fails.
+func (s *MortgageService) resolveBorrowerName(ctx context.Context, membNo string) string {
+	if member, err := s.memberRepo.GetByMembNo(ctx, membNo); err == nil {
+		return member.FullName
+	}
+	return membNo
+}
+
+// notifyCommittee pushes a plain LINE text message to every active
+// committee member with a linked LINE account. Best-effort: failures are
+// logged, never block the calling action.
+func (s *MortgageService) notifyCommittee(ctx context.Context, message string) {
+	if s.committeeRepo == nil || s.lineService == nil {
+		return
+	}
+
+	channelAccessToken := os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
+	if channelAccessToken == "" {
+		return
+	}
+
+	recipients, err := s.committeeRepo.ListActiveRecipients(ctx)
+	if err != nil || len(recipients) == 0 {
+		return
+	}
 
 	for _, r := range recipients {
 		if err := s.lineService.SendPushMessage(r.LineUserID, message, channelAccessToken); err != nil {

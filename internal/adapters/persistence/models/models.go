@@ -257,6 +257,33 @@ func (Mortgage) TableName() string {
 	return "mortgages"
 }
 
+// ============================================================
+// Phase 7: Committee Members
+// ============================================================
+
+// CommitteeMember designates a Flommast member as a committee member
+// (คณะกรรมการ) for a named term/batch, e.g. "ชุดที่ 45".
+// Removal is a soft-deactivate (IsActive=false), not a hard delete, so
+// history is preserved; re-adding the same MembNo creates a new active row.
+type CommitteeMember struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	MembNo    string         `gorm:"size:20;not null;index" json:"memb_no"`
+	TermLabel string         `gorm:"size:100;not null" json:"term_label"`
+	IsActive  bool           `gorm:"not null;default:true;index" json:"is_active"`
+	AddedBy   uint           `gorm:"not null" json:"added_by"`
+	RemovedBy *uint          `json:"removed_by,omitempty"`
+	RemovedAt *time.Time     `json:"removed_at,omitempty"`
+	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+
+	AddedByUser *User `gorm:"foreignKey:AddedBy" json:"added_by_user,omitempty"`
+}
+
+func (CommitteeMember) TableName() string {
+	return "committee_members"
+}
+
 // MortgageResponse DTO
 type MortgageResponse struct {
 	ID              uint    `json:"id"`
@@ -529,6 +556,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&MortgageDocCheck{},
 		// Phase 3a: Auto-numbering
 		&AppCounter{},
+		// Phase 7: Committee Members
+		&CommitteeMember{},
 	)
 }
 

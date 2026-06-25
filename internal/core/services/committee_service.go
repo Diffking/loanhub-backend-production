@@ -45,13 +45,13 @@ type AddCommitteeMemberInput struct {
 }
 
 // Add designates a member as an active committee member for the given term.
-func (s *CommitteeService) Add(ctx context.Context, input *AddCommitteeMemberInput, addedBy uint) (*models.CommitteeMember, error) {
-	exists, err := s.memberRepo.Exists(ctx, input.MembNo)
+func (s *CommitteeService) Add(ctx context.Context, input *AddCommitteeMemberInput, addedBy uint) (*CommitteeMemberView, error) {
+	member, err := s.memberRepo.GetByMembNo(ctx, input.MembNo)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFlommastMemberNotFound
+		}
 		return nil, err
-	}
-	if !exists {
-		return nil, ErrFlommastMemberNotFound
 	}
 
 	_, err = s.committeeRepo.GetActiveByMembNo(ctx, input.MembNo)
@@ -71,15 +71,34 @@ func (s *CommitteeService) Add(ctx context.Context, input *AddCommitteeMemberInp
 	if err := s.committeeRepo.Create(ctx, cm); err != nil {
 		return nil, err
 	}
-	return cm, nil
+	return &CommitteeMemberView{CommitteeMember: cm, FullName: member.FullName}, nil
+}
+
+// CommitteeMemberView enriches a CommitteeMember with the designated member's
+// own full name (from Flommast), for display in admin UIs.
+type CommitteeMemberView struct {
+	*models.CommitteeMember
+	FullName string `json:"full_name"`
+}
+
+func (s *CommitteeService) enrich(ctx context.Context, members []*models.CommitteeMember) []*CommitteeMemberView {
+	views := make([]*CommitteeMemberView, 0, len(members))
+	for _, m := range members {
+		view := &CommitteeMemberView{CommitteeMember: m}
+		if member, err := s.memberRepo.GetByMembNo(ctx, m.MembNo); err == nil {
+			view.FullName = member.FullName
+		}
+		views = append(views, view)
+	}
+	return views
 }
 
 type CommitteeListOutput struct {
-	Members    []*models.CommitteeMember `json:"members"`
-	Total      int64                     `json:"total"`
-	Page       int                       `json:"page"`
-	Limit      int                       `json:"limit"`
-	TotalPages int                       `json:"total_pages"`
+	Members    []*CommitteeMemberView `json:"members"`
+	Total      int64                  `json:"total"`
+	Page       int                    `json:"page"`
+	Limit      int                    `json:"limit"`
+	TotalPages int                    `json:"total_pages"`
 }
 
 // List lists all committee member designations (active and revoked), newest first.
@@ -93,7 +112,7 @@ func (s *CommitteeService) List(ctx context.Context, page, limit int) (*Committe
 	}
 
 	return &CommitteeListOutput{
-		Members:    members,
+		Members:    s.enrich(ctx, members),
 		Total:      total,
 		Page:       page,
 		Limit:      limit,

@@ -46,6 +46,18 @@ type MemberRepository interface {
 	CountActive(ctx context.Context) (int64, error)
 }
 
+// CommitteeRepository defines committee_members repository interface.
+// Phase 7: คณะกรรมการ — designates Flommast members who may view the
+// borrower-list aggregate view in the User app.
+type CommitteeRepository interface {
+	Create(ctx context.Context, cm *models.CommitteeMember) error
+	GetByID(ctx context.Context, id uint) (*models.CommitteeMember, error)
+	List(ctx context.Context, offset, limit int) ([]*models.CommitteeMember, int64, error)
+	GetActiveByMembNo(ctx context.Context, membNo string) (*models.CommitteeMember, error)
+	IsActiveMember(ctx context.Context, membNo string) (bool, error)
+	Deactivate(ctx context.Context, id uint, removedBy uint) error
+}
+
 // SavingsRepository defines savings_accounts repository interface.
 // Phase 3b: ใช้ดึงข้อมูลบัญชีเงินฝากของสมาชิกเพื่อคำนวณค้ำประกันเงินกู้ (cap 95%).
 type SavingsRepository interface {

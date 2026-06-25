@@ -29,6 +29,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	mortgageRepo := repositories.NewMortgageRepository(db)
 	transactionRepo := repositories.NewTransactionRepository(db)
 
+	// Phase 7: Committee repository
+	committeeRepo := repositories.NewCommitteeRepository(db)
+
 	// Phase 6: Doc Check repositories
 	docItemRepo := repositories.NewDocItemRepository(db)
 	docCheckRepo := repositories.NewMortgageDocCheckRepository(db)
@@ -60,6 +63,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard service
 	dashboardService := services.NewDashboardService(db)
 
+	// Phase 7: Committee service
+	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo)
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
 	authHandler := handlers.NewAuthHandler(authService, cfg)
@@ -71,6 +77,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 
 	// Phase 5: Dashboard handler
 	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
+
+	// Phase 7: Committee handler
+	committeeHandler := handlers.NewCommitteeHandler(committeeService)
 
 	// LINE Handler
 	lineHandler := handlers.NewLINEHandler(db)
@@ -124,7 +133,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
 		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler,
-		loanPrintHandler, flommastImportHandler, flommastSyncHandler, cfg)
+		loanPrintHandler, flommastImportHandler, flommastSyncHandler, committeeHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -146,6 +155,7 @@ func setupAPIV1Routes(
 	loanPrintHandler *handlers.LoanPrintHandler,
 	flommastImportHandler *handlers.FlommastImportHandler,
 	flommastSyncHandler *handlers.FlommastSyncHandler,
+	committeeHandler *handlers.CommitteeHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -221,6 +231,21 @@ func setupAPIV1Routes(
 	// Phase 3A (Missing members — list + bulk delete): JWT/Admin
 	flommastAdminRoutes.Get("/missing", flommastSyncHandler.Missing)
 	flommastAdminRoutes.Delete("/missing", flommastSyncHandler.DeleteMissing)
+
+	// Phase 7 (Committee Members — designation management): Officer/Admin
+	committeeAdminRoutes := router.Group("/admin/committee")
+	committeeAdminRoutes.Use(middleware.AuthMiddleware(cfg))
+	committeeAdminRoutes.Use(middleware.OfficerOrAdmin())
+	committeeAdminRoutes.Post("/members", committeeHandler.AddMember)
+	committeeAdminRoutes.Get("/members", committeeHandler.ListMembers)
+	committeeAdminRoutes.Delete("/members/:id", committeeHandler.RemoveMember)
+
+	// Phase 7 (Committee Members — viewer endpoints): any authenticated member,
+	// authorization (is active committee member) is checked inside the service.
+	committeeViewerRoutes := router.Group("/committee")
+	committeeViewerRoutes.Use(middleware.AuthMiddleware(cfg))
+	committeeViewerRoutes.Get("/me", committeeHandler.IsCommitteeMember)
+	committeeViewerRoutes.Get("/borrowers", committeeHandler.ListBorrowersByMonth)
 }
 
 // setupAuthRoutes configures authentication routes

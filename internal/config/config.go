@@ -17,6 +17,7 @@ type Config struct {
 	Database DatabaseConfig
 	JWT      JWTConfig
 	Cookie   CookieConfig
+	Sync     SyncConfig
 }
 
 // DatabaseConfig holds database configuration
@@ -66,6 +67,7 @@ func Load() (*Config, error) {
 		Database: loadDatabaseConfig(appMode),
 		JWT:      loadJWTConfig(appMode),
 		Cookie:   loadCookieConfig(appMode),
+		Sync:     loadSyncConfig(),
 	}
 
 	// Set global config

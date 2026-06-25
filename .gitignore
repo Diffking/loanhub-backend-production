@@ -1,12 +1,24 @@
-.env
+
+"File_ZIP/" 
+# Build & junk
+# Patch script backups (auto-generated, never commit)
+*.before-*
 *.env
-.env.*
 *.log
-logs/
-vendor/
+*.swp
+*.zip
+.DS_Store
+.env
+.env.*
+!.env.example
 .idea/
 .vscode/
-*.swp
-.DS_Store
-main
 /cmd/serv
+backups/
+loaneasy
+logs/
+main
+package-lock.json
+server
+vendor/
+phase3a/

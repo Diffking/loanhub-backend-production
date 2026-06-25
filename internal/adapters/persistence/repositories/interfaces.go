@@ -33,10 +33,41 @@ type RefreshTokenRepository interface {
 	CountActiveByUserID(ctx context.Context, userID uint) (int64, error)
 }
 
-// MemberRepository defines member repository interface
-// Read-only access to flommast table
+// MemberRepository defines member repository interface (flommast table).
+// Read access (Get/Search) — managed by admin import for writes.
 type MemberRepository interface {
 	GetByMembNo(ctx context.Context, membNo string) (*models.Flommast, error)
 	Exists(ctx context.Context, membNo string) (bool, error)
 	Search(ctx context.Context, query string, limit int) ([]*models.Flommast, error)
+
+	// 🆕 Phase 1 (Loan Print)
+	SearchActive(ctx context.Context, query string, limit int) ([]*models.Flommast, error)
+	GetFullByMembNo(ctx context.Context, membNo string) (*models.Flommast, error)
+	CountActive(ctx context.Context) (int64, error)
+}
+
+// CommitteeRepository defines committee_members repository interface.
+// Phase 7: คณะกรรมการ — designates Flommast members who may view the
+// borrower-list aggregate view in the User app.
+type CommitteeRepository interface {
+	Create(ctx context.Context, cm *models.CommitteeMember) error
+	GetByID(ctx context.Context, id uint) (*models.CommitteeMember, error)
+	List(ctx context.Context, offset, limit int) ([]*models.CommitteeMember, int64, error)
+	GetActiveByMembNo(ctx context.Context, membNo string) (*models.CommitteeMember, error)
+	IsActiveMember(ctx context.Context, membNo string) (bool, error)
+	Deactivate(ctx context.Context, id uint, removedBy uint) error
+}
+
+// CommitteeVisibilityRepository manages the singleton committee_visibility_settings row.
+type CommitteeVisibilityRepository interface {
+	Get(ctx context.Context) (*models.CommitteeVisibilitySetting, error)
+	Update(ctx context.Context, setting *models.CommitteeVisibilitySetting) error
+}
+
+// SavingsRepository defines savings_accounts repository interface.
+// Phase 3b: ใช้ดึงข้อมูลบัญชีเงินฝากของสมาชิกเพื่อคำนวณค้ำประกันเงินกู้ (cap 95%).
+type SavingsRepository interface {
+	GetByMembNo(ctx context.Context, membNo string) ([]*models.SavingsAccount, error)
+	CountByMembNo(ctx context.Context, membNo string) (int64, error)
+	TotalBalance(ctx context.Context, membNo string) (float64, error)
 }

@@ -31,6 +31,11 @@ func (s *Seeder) Run() error {
 	return nil
 }
 
+// strPtr helper - แปลง string → *string (สำหรับ nullable fields)
+func strPtr(s string) *string {
+	return &s
+}
+
 // seedAdminUser seeds default admin user
 // This is for development/testing only
 // In production, create admin through secure process
@@ -52,7 +57,7 @@ func (s *Seeder) seedAdminUser() error {
 	admin := &models.User{
 		MembNo:   "ADMIN001", // Placeholder - should be valid member number
 		Username: "admin",
-		Email:    "admin@spsc.or.th",
+		Email:    strPtr("admin@spsc.or.th"),
 		Password: hashedPassword,
 		Role:     "ADMIN",
 		IsActive: true,

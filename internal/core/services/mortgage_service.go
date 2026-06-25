@@ -217,6 +217,12 @@ func (s *MortgageService) ChangeStep(ctx context.Context, mortgageID uint, input
 
 	oldStepID := mortgage.CurrentStepID
 	mortgage.CurrentStepID = newStep.ID
+
+	// ถ้าย้อนกลับไป step 1-3 (ก่อนอนุมัติ) → ล้างวงเงินอนุมัติ
+	if newStep.StepOrder < 4 && mortgage.ApprovedAmount != nil {
+		mortgage.ApprovedAmount = nil
+	}
+
 	if err := s.mortgageRepo.Update(ctx, mortgage); err != nil {
 		return nil, err
 	}
@@ -493,6 +499,55 @@ func (s *MortgageService) ChangeOfficer(ctx context.Context, mortgageID uint, in
 		MortgageID:      mortgageID,
 		TransactionType: models.TxTypeOfficerChange,
 		Description:     input.Remark,
+		PerformedBy:     userID,
+		IPAddress:       ipAddress,
+	}
+	s.transactionRepo.Create(ctx, tx)
+
+	return mortgage, nil
+}
+
+// ============================================================
+// UpdateAmount - อัพเดทวงเงินที่ขอ/วงเงินอนุมัติ
+// ============================================================
+
+type UpdateAmountInput struct {
+	Amount         *float64 `json:"amount"`
+	ApprovedAmount *float64 `json:"approved_amount"`
+	Remark         string   `json:"remark,omitempty"`
+}
+
+func (s *MortgageService) UpdateAmount(ctx context.Context, mortgageID uint, input *UpdateAmountInput, userID uint, ipAddress string) (*models.Mortgage, error) {
+	mortgage, err := s.mortgageRepo.GetByID(ctx, mortgageID)
+	if err != nil {
+		return nil, ErrMortgageNotFound
+	}
+
+	// อัพเดทวงเงินที่ขอ
+	if input.Amount != nil && *input.Amount > 0 {
+		mortgage.Amount = *input.Amount
+	}
+
+	// อัพเดทวงเงินอนุมัติ
+	if input.ApprovedAmount != nil {
+		mortgage.ApprovedAmount = input.ApprovedAmount
+	}
+
+	if err := s.mortgageRepo.Update(ctx, mortgage); err != nil {
+		return nil, err
+	}
+
+	// บันทึก transaction
+	description := "อัพเดทวงเงิน"
+	if input.Remark != "" {
+		description = input.Remark
+	}
+
+	tx := &models.Transaction{
+		MortgageID:      mortgageID,
+		TransactionType: models.TxTypeAmountChange,
+		Amount:          input.ApprovedAmount,
+		Description:     description,
 		PerformedBy:     userID,
 		IPAddress:       ipAddress,
 	}

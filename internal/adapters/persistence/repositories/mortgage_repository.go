@@ -39,9 +39,11 @@ func (r *MortgageRepository) GetByID(ctx context.Context, id uint) (*models.Mort
 }
 
 // GetByMembNo gets mortgages by member number
+// FIX: เพิ่ม Preload("Officer") เพื่อให้ officer_name แสดงใน User App
 func (r *MortgageRepository) GetByMembNo(ctx context.Context, membNo string) ([]*models.Mortgage, error) {
 	var mortgages []*models.Mortgage
 	err := r.db.WithContext(ctx).
+		Preload("Officer").
 		Preload("LoanType").
 		Preload("CurrentStep").
 		Preload("CurrentAppt").
@@ -112,12 +114,37 @@ func (r *MortgageRepository) ListByStep(ctx context.Context, stepID uint, offset
 	return mortgages, total, err
 }
 
+// ListByMonth lists mortgages created in a given year/month, across all members.
+// Phase 7: used by the committee borrower-list view.
+func (r *MortgageRepository) ListByMonth(ctx context.Context, year, month, offset, limit int) ([]*models.Mortgage, int64, error) {
+	var mortgages []*models.Mortgage
+	var total int64
+
+	r.db.WithContext(ctx).Model(&models.Mortgage{}).
+		Where("YEAR(created_at) = ? AND MONTH(created_at) = ?", year, month).
+		Count(&total)
+
+	err := r.db.WithContext(ctx).
+		Preload("Officer").
+		Preload("LoanType").
+		Preload("CurrentStep").
+		Preload("CurrentAppt").
+		Where("YEAR(created_at) = ? AND MONTH(created_at) = ?", year, month).
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&mortgages).Error
+
+	return mortgages, total, err
+}
+
 // Update updates a mortgage
 func (r *MortgageRepository) Update(ctx context.Context, mortgage *models.Mortgage) error {
 	return r.db.WithContext(ctx).Model(&models.Mortgage{}).Where("id = ?", mortgage.ID).Updates(map[string]interface{}{
 		"contract_no":       mortgage.ContractNo,
 		"officer_id":        mortgage.OfficerID,
 		"amount":            mortgage.Amount,
+		"approved_amount":   mortgage.ApprovedAmount,
 		"collateral":        mortgage.Collateral,
 		"purpose":           mortgage.Purpose,
 		"guarantor_memb_no": mortgage.GuarantorMembNo,

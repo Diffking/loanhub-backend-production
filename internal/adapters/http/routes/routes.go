@@ -29,6 +29,18 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	mortgageRepo := repositories.NewMortgageRepository(db)
 	transactionRepo := repositories.NewTransactionRepository(db)
 
+	// Phase 7: Committee repository
+	committeeRepo := repositories.NewCommitteeRepository(db)
+	committeeVisibilityRepo := repositories.NewCommitteeVisibilityRepository(db)
+
+	// Phase 6: Doc Check repositories
+	docItemRepo := repositories.NewDocItemRepository(db)
+	docCheckRepo := repositories.NewMortgageDocCheckRepository(db)
+
+	// Phase 1 (Loan Print): repositories
+	loanPurposeRepo := repositories.NewLoanPurposeRepository(db)
+	flommastImportRepo := repositories.NewFlommastImportRepository(db)
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
 	userService := services.NewUserService(userRepo, memberRepo)
@@ -52,6 +64,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard service
 	dashboardService := services.NewDashboardService(db)
 
+	// Phase 7: Committee service
+	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo, committeeVisibilityRepo)
+
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
 	authHandler := handlers.NewAuthHandler(authService, cfg)
@@ -64,15 +79,19 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard handler
 	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
 
+	// Phase 7: Committee handler
+	committeeHandler := handlers.NewCommitteeHandler(committeeService)
+
 	// LINE Handler
 	lineHandler := handlers.NewLINEHandler(db)
 
 	// ============================================================
-	// ✅ LIFF Handler v2 - รับ lineService + otpService
+	// LIFF Handler v3 - รับ lineService + otpService + smsService
 	// ============================================================
 	lineService := lineHandler.GetLINEService()
 	otpService := services.NewOTPService(db)
-	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService)
+	smsService := services.NewSMSService(lineService)
+	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService)
 
 	// v2.2.2: Mobile Handler (Aggregated APIs)
 	mobileHandler := handlers.NewMobileHandler(
@@ -85,6 +104,25 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 		transactionRepo,
 	)
 
+	// Phase 6: DocCheck service & handler
+	docCheckService := services.NewDocCheckService(
+		docItemRepo,
+		docCheckRepo,
+		mortgageRepo,
+		lineService,
+		db,
+	)
+	docCheckHandler := handlers.NewDocCheckHandler(docCheckService, docItemRepo)
+
+	// Phase 3a: App counter repository (auto-numbering)
+	appCounterRepo := repositories.NewAppCounterRepository(db)
+
+	// Phase 1 (Loan Print): handlers
+	savingsRepo := repositories.NewSavingsRepository(db)
+	loanPrintHandler := handlers.NewLoanPrintHandler(memberRepo, loanPurposeRepo, appCounterRepo, savingsRepo)
+	flommastImportHandler := handlers.NewFlommastImportHandler(flommastImportRepo)
+	flommastSyncHandler := handlers.NewFlommastSyncHandler(flommastImportRepo, db)
+
 	// Health check & root routes
 	app.Get("/", healthHandler.Root)
 	app.Get("/health", healthHandler.HealthCheck)
@@ -94,7 +132,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
-	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler, masterHandler, dashboardHandler, lineHandler, liffHandler, cfg)
+	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
+		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler,
+		loanPrintHandler, flommastImportHandler, flommastSyncHandler, committeeHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -112,6 +152,11 @@ func setupAPIV1Routes(
 	dashboardHandler *handlers.DashboardHandler,
 	lineHandler *handlers.LINEHandler,
 	liffHandler *handlers.LIFFHandler,
+	docCheckHandler *handlers.DocCheckHandler,
+	loanPrintHandler *handlers.LoanPrintHandler,
+	flommastImportHandler *handlers.FlommastImportHandler,
+	flommastSyncHandler *handlers.FlommastSyncHandler,
+	committeeHandler *handlers.CommitteeHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -144,70 +189,94 @@ func setupAPIV1Routes(
 	mortgageRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupMortgageRoutes(mortgageRoutes, mortgageHandler, cfg)
 
+	// Phase 6: Doc Checks routes (under mortgages, Officer/Admin)
+	setupDocCheckRoutes(mortgageRoutes, docCheckHandler)
+
 	// Phase 4: Master routes (Admin only)
 	masterRoutes := router.Group("/master")
 	masterRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupMasterRoutes(masterRoutes, masterHandler)
 
+	// Phase 6: Doc Items master routes (reuse masterRoutes auth)
+	setupDocItemRoutes(masterRoutes, docCheckHandler)
+
 	// Phase 5: Dashboard routes
 	dashboardRoutes := router.Group("/dashboard")
 	dashboardRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
+
+	// Phase 1 (Loan Print): Officer + Admin
+	loanPrintRoutes := router.Group("/loan-print")
+	loanPrintRoutes.Use(middleware.AuthMiddleware(cfg))
+	loanPrintRoutes.Use(middleware.OfficerOrAdmin())
+	setupLoanPrintRoutes(loanPrintRoutes, loanPrintHandler)
+
+	// Phase 2 (Flommast Sync — agent push): API Key auth
+	//   MUST be registered BEFORE the /admin/flommast JWT group below,
+	//   otherwise Fiber's prefix-Use middleware runs JWT check first.
+	router.Post("/admin/flommast/sync",
+		middleware.APIKeyAuth(cfg),
+		flommastSyncHandler.Sync,
+	)
+
+	// Phase 1 (Flommast Import): Admin only
+	flommastAdminRoutes := router.Group("/admin/flommast")
+	flommastAdminRoutes.Use(middleware.AuthMiddleware(cfg))
+	flommastAdminRoutes.Use(middleware.AdminOnly())
+	setupFlommastImportRoutes(flommastAdminRoutes, flommastImportHandler)
+
+	// Phase 2 (Flommast Sync — admin UI endpoints): JWT/Admin
+	flommastAdminRoutes.Get("/sync-history", flommastSyncHandler.History)
+	flommastAdminRoutes.Get("/sync-status", flommastSyncHandler.Status)
+
+	// Phase 3A (Missing members — list + bulk delete): JWT/Admin
+	flommastAdminRoutes.Get("/missing", flommastSyncHandler.Missing)
+	flommastAdminRoutes.Delete("/missing", flommastSyncHandler.DeleteMissing)
+
+	// Phase 7 (Committee Members — designation management): Officer/Admin
+	committeeAdminRoutes := router.Group("/admin/committee")
+	committeeAdminRoutes.Use(middleware.AuthMiddleware(cfg))
+	committeeAdminRoutes.Use(middleware.OfficerOrAdmin())
+	committeeAdminRoutes.Post("/members", committeeHandler.AddMember)
+	committeeAdminRoutes.Get("/members", committeeHandler.ListMembers)
+	committeeAdminRoutes.Delete("/members/:id", committeeHandler.RemoveMember)
+	committeeAdminRoutes.Get("/visibility", committeeHandler.GetVisibility)
+	committeeAdminRoutes.Put("/visibility", committeeHandler.UpdateVisibility)
+
+	// Phase 7 (Committee Members — viewer endpoints): any authenticated member,
+	// authorization (is active committee member) is checked inside the service.
+	committeeViewerRoutes := router.Group("/committee")
+	committeeViewerRoutes.Use(middleware.AuthMiddleware(cfg))
+	committeeViewerRoutes.Get("/me", committeeHandler.IsCommitteeMember)
+	committeeViewerRoutes.Get("/borrowers", committeeHandler.ListBorrowersByMonth)
 }
 
 // setupAuthRoutes configures authentication routes
 func setupAuthRoutes(router fiber.Router, handler *handlers.AuthHandler, cfg *config.Config) {
-	// Public routes
 	router.Post("/register", handler.Register)
 	router.Post("/login", handler.Login)
 	router.Post("/refresh", handler.RefreshToken)
 	router.Post("/logout", handler.Logout)
-
-	// Protected routes
 	router.Get("/me", middleware.AuthMiddleware(cfg), handler.Me)
 	router.Post("/logout-all", middleware.AuthMiddleware(cfg), handler.LogoutAll)
 }
 
 // setupLINERoutes configures LINE authentication routes
 func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *config.Config) {
-	// PUBLIC - Get LINE Login URL (for login with LINE - no auth required)
 	router.Get("/url", handler.GetLINELoginURL)
-
-	// PUBLIC - LINE callback (LINE redirects here)
 	router.Get("/callback", handler.LINECallback)
-
-	// PROTECTED - Link LINE account (requires login first)
 	router.Post("/link", middleware.AuthMiddleware(cfg), handler.LinkLINE)
-
-	// PROTECTED - Unlink LINE account
 	router.Post("/unlink", middleware.AuthMiddleware(cfg), handler.UnlinkLINE)
-
-	// PROTECTED - Get LINE status
 	router.Get("/status", middleware.AuthMiddleware(cfg), handler.GetLINEStatus)
 }
 
-// ============================================================
-// ✅ LIFF Routes - เพิ่ม Rate Limiter ป้องกัน spam/brute force
-//    StrictRateLimiter = 3 req/min/IP (OTP, register, device change)
-//    AuthRateLimiter   = 5 req/min/IP (check, login, device info)
-// ============================================================
+// setupLIFFRoutes configures LIFF routes
 func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
-	// Check if LINE user exists in system (5 req/min/IP)
 	router.Post("/check", middleware.AuthRateLimiter(), handler.CheckLineUser)
-
-	// OTP routes (3 req/min/IP — ป้องกัน OTP spam + brute force)
 	router.Post("/otp/request", middleware.StrictRateLimiter(), handler.RequestOTP)
 	router.Post("/otp/verify", middleware.StrictRateLimiter(), handler.VerifyOTP)
-
-	// Register - Link LINE with Member Number (3 req/min/IP)
 	router.Post("/register", middleware.StrictRateLimiter(), handler.Register)
-
-	// Login with LIFF (5 req/min/IP — อนุญาต WiFi)
 	router.Post("/login", middleware.AuthRateLimiter(), handler.LoginWithLiff)
-
-	// Device management
-	router.Post("/device/change", middleware.StrictRateLimiter(), handler.ChangeDevice) // 3 req/min/IP
-	router.Post("/device/info", middleware.AuthRateLimiter(), handler.GetDeviceInfo)     // 5 req/min/IP
 }
 
 // setupUserRoutes configures user management routes (Admin only)
@@ -228,13 +297,10 @@ func setupProfileRoutes(router fiber.Router, handler *handlers.UserHandler) {
 
 // setupMortgageRoutes configures mortgage routes (Phase 4)
 func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler, cfg *config.Config) {
-	// Member can view their own mortgages
 	router.Get("/my", handler.GetMyMortgages)
 
-	// Officer/Admin routes
 	officerRoutes := router.Group("")
 	officerRoutes.Use(middleware.OfficerOrAdmin())
-
 	officerRoutes.Post("/", handler.Create)
 	officerRoutes.Get("/", handler.List)
 	officerRoutes.Get("/:id", handler.GetByID)
@@ -247,37 +313,30 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 	officerRoutes.Put("/:id/step", handler.ChangeStep)
 	officerRoutes.Put("/:id/approve", handler.Approve)
 	officerRoutes.Put("/:id/reject", handler.Reject)
-
-	// Admin only
-	adminRoutes := router.Group("")
-	adminRoutes.Use(middleware.AdminOnly())
-	adminRoutes.Put("/:id/officer", handler.ChangeOfficer)
+	officerRoutes.Put("/:id/officer", handler.ChangeOfficer)
+	officerRoutes.Put("/:id/amount", handler.UpdateAmount)
 }
 
-// setupMasterRoutes configures master data routes (Admin only) (Phase 4)
+// setupMasterRoutes configures master data routes (Phase 4)
 func setupMasterRoutes(router fiber.Router, handler *handlers.MasterHandler) {
-	// Loan Types
 	router.Get("/loan-types", handler.ListLoanTypes)
 	router.Get("/loan-types/:id", handler.GetLoanType)
 	router.Post("/loan-types", handler.CreateLoanType)
 	router.Put("/loan-types/:id", handler.UpdateLoanType)
 	router.Delete("/loan-types/:id", handler.DeleteLoanType)
 
-	// Loan Steps
 	router.Get("/loan-steps", handler.ListLoanSteps)
 	router.Get("/loan-steps/:id", handler.GetLoanStep)
 	router.Post("/loan-steps", handler.CreateLoanStep)
 	router.Put("/loan-steps/:id", handler.UpdateLoanStep)
 	router.Delete("/loan-steps/:id", handler.DeleteLoanStep)
 
-	// Loan Docs
 	router.Get("/loan-docs", handler.ListLoanDocs)
 	router.Get("/loan-docs/:id", handler.GetLoanDoc)
 	router.Post("/loan-docs", handler.CreateLoanDoc)
 	router.Put("/loan-docs/:id", handler.UpdateLoanDoc)
 	router.Delete("/loan-docs/:id", handler.DeleteLoanDoc)
 
-	// Loan Appts
 	router.Get("/loan-appts", handler.ListLoanAppts)
 	router.Get("/loan-appts/:id", handler.GetLoanAppt)
 	router.Post("/loan-appts", handler.CreateLoanAppt)
@@ -287,31 +346,67 @@ func setupMasterRoutes(router fiber.Router, handler *handlers.MasterHandler) {
 
 // setupDashboardRoutes configures dashboard routes (Phase 5)
 func setupDashboardRoutes(router fiber.Router, handler *handlers.DashboardHandler) {
-	// Auto-detect role dashboard (All authenticated users)
 	router.Get("/", handler.GetMyDashboard)
-
-	// User dashboard (All authenticated users)
 	router.Get("/user", handler.GetUserDashboard)
-
-	// Officer dashboard (Officer/Admin only)
 	router.Get("/officer", middleware.OfficerOrAdmin(), handler.GetOfficerDashboard)
-
-	// Admin dashboard (Admin only)
 	router.Get("/admin", middleware.AdminOnly(), handler.GetAdminDashboard)
 }
 
 // setupAPIV2Routes configures API v2 routes (Mobile-optimized)
 func setupAPIV2Routes(router fiber.Router, mobileHandler *handlers.MobileHandler, cfg *config.Config) {
-	// Mobile routes group (requires authentication)
 	mobileRoutes := router.Group("/mobile")
 	mobileRoutes.Use(middleware.AuthMiddleware(cfg))
-
-	// GET /api/v2/mobile/dashboard
 	mobileRoutes.Get("/dashboard", mobileHandler.GetDashboard)
-
-	// GET /api/v2/mobile/my-loans
 	mobileRoutes.Get("/my-loans", mobileHandler.GetMyLoans)
-
-	// GET /api/v2/mobile/master
 	mobileRoutes.Get("/master", mobileHandler.GetMasterData)
+}
+
+// ============================================================
+// Phase 6: Doc Items & Doc Checks routes
+// ============================================================
+
+// setupDocItemRoutes configures doc item master data routes
+func setupDocItemRoutes(router fiber.Router, handler *handlers.DocCheckHandler) {
+	router.Get("/doc-items", handler.ListDocItems)
+	router.Get("/doc-items/:id", handler.GetDocItem)
+	router.Post("/doc-items", handler.CreateDocItem)
+	router.Put("/doc-items/:id", handler.UpdateDocItem)
+	router.Delete("/doc-items/:id", handler.DeleteDocItem)
+}
+
+// setupDocCheckRoutes configures mortgage doc check routes
+func setupDocCheckRoutes(router fiber.Router, handler *handlers.DocCheckHandler) {
+	docCheckRoutes := router.Group("/:id/doc-checks")
+	docCheckRoutes.Use(middleware.OfficerOrAdmin())
+	docCheckRoutes.Get("/", handler.GetDocChecks)
+	docCheckRoutes.Put("/", handler.UpdateDocChecks)
+	docCheckRoutes.Get("/incomplete", handler.GetIncompleteDoc)
+	docCheckRoutes.Post("/notify-line", handler.NotifyLineIncompleteDoc)
+}
+
+// ============================================================
+// Phase 1 (Loan Print): Officer + Admin
+// ============================================================
+
+// setupLoanPrintRoutes configures loan-print endpoints (search members, get full data, list purposes)
+func setupLoanPrintRoutes(router fiber.Router, handler *handlers.LoanPrintHandler) {
+	router.Get("/members/search", handler.SearchMembers)
+	router.Get("/members/:memb_no", handler.GetMember)
+	router.Get("/purposes", handler.ListPurposes)
+
+	// Phase 3a: Auto-numbering
+	router.Get("/next-number", handler.PeekNextNumber)
+	router.Post("/issue-number", handler.IssueNextNumber)
+	// Phase 3b: Collateral endpoint
+	router.Get("/collateral/:memb_no", handler.GetCollateral)
+}
+
+// ============================================================
+// Phase 1 (Flommast Import): Admin only
+// ============================================================
+
+// setupFlommastImportRoutes configures admin endpoints for uploading flommast .sql files
+func setupFlommastImportRoutes(router fiber.Router, handler *handlers.FlommastImportHandler) {
+	router.Post("/preview", handler.Preview)
+	router.Post("/apply", handler.Apply)
 }

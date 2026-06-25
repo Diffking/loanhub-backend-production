@@ -707,3 +707,58 @@ func (h *MortgageHandler) ChangeOfficer(c *fiber.Ctx) error {
 		"mortgage": mortgage.ToResponse(),
 	})
 }
+
+// UpdateAmountRequest represents update amount request
+type UpdateAmountRequest struct {
+	Amount         *float64 `json:"amount"`
+	ApprovedAmount *float64 `json:"approved_amount"`
+	Remark         string   `json:"remark,omitempty"`
+}
+
+// UpdateAmount updates mortgage amount
+// @Summary Update mortgage amount
+// @Description Update requested/approved amount (Officer/Admin)
+// @Tags Mortgages
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Mortgage ID"
+// @Param body body UpdateAmountRequest true "Amount data"
+// @Success 200 {object} response.Response
+// @Router /mortgages/{id}/amount [put]
+func (h *MortgageHandler) UpdateAmount(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil {
+		return response.BadRequest(c, "Invalid mortgage ID")
+	}
+
+	var req UpdateAmountRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "Invalid request body")
+	}
+
+	if req.Amount == nil && req.ApprovedAmount == nil {
+		return response.BadRequest(c, "Amount or approved_amount is required")
+	}
+
+	userID, _ := c.Locals("userID").(uint)
+	ipAddress := getClientIP(c)
+
+	input := &services.UpdateAmountInput{
+		Amount:         req.Amount,
+		ApprovedAmount: req.ApprovedAmount,
+		Remark:         req.Remark,
+	}
+
+	mortgage, err := h.mortgageService.UpdateAmount(c.Context(), uint(id), input, userID, ipAddress)
+	if err != nil {
+		if errors.Is(err, services.ErrMortgageNotFound) {
+			return response.NotFound(c, "Mortgage not found")
+		}
+		return response.InternalServerError(c, "Failed to update amount")
+	}
+
+	return response.Success(c, "Amount updated successfully", fiber.Map{
+		"mortgage": mortgage.ToResponse(),
+	})
+}

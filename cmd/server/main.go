@@ -72,6 +72,7 @@ func main() {
 	app := fiber.New(fiber.Config{
 		AppName:      "SPSC loanEasy API v1.0",
 		ErrorHandler: middleware.CustomErrorHandler,
+		BodyLimit:    12 * 1024 * 1024, // 12 MB — สำหรับ flommast SQL import (default 4MB ไม่พอ)
 	})
 
 	// Setup middlewares

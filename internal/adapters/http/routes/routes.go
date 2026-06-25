@@ -41,6 +41,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	loanPurposeRepo := repositories.NewLoanPurposeRepository(db)
 	flommastImportRepo := repositories.NewFlommastImportRepository(db)
 
+	// LINE Handler (moved up: needed by MortgageService for committee notifications)
+	lineHandler := handlers.NewLINEHandler(db)
+	lineService := lineHandler.GetLINEService()
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo, refreshTokenRepo, memberRepo, cfg)
 	userService := services.NewUserService(userRepo, memberRepo)
@@ -59,6 +63,8 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 		memberRepo,
 		userRepo,
 		notifyService,
+		committeeRepo,
+		lineService,
 	)
 
 	// Phase 5: Dashboard service
@@ -82,13 +88,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 7: Committee handler
 	committeeHandler := handlers.NewCommitteeHandler(committeeService)
 
-	// LINE Handler
-	lineHandler := handlers.NewLINEHandler(db)
-
 	// ============================================================
 	// LIFF Handler v3 - รับ lineService + otpService + smsService
+	// (lineHandler/lineService constructed earlier, above MortgageService)
 	// ============================================================
-	lineService := lineHandler.GetLINEService()
 	otpService := services.NewOTPService(db)
 	smsService := services.NewSMSService(lineService)
 	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService)

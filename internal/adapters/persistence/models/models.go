@@ -284,6 +284,22 @@ func (CommitteeMember) TableName() string {
 	return "committee_members"
 }
 
+// CommitteeVisibilitySetting is a singleton row (ID always 1) controlling
+// which borrower fields are shown to committee viewers in the borrower-list
+// aggregate view. Applies system-wide, not per term/member.
+type CommitteeVisibilitySetting struct {
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	ShowBorrowerName bool      `gorm:"not null;default:true" json:"show_borrower_name"`
+	ShowMembNo       bool      `gorm:"not null;default:true" json:"show_memb_no"`
+	ShowAmount       bool      `gorm:"not null;default:true" json:"show_amount"`
+	ShowLoanStatus   bool      `gorm:"not null;default:true" json:"show_loan_status"`
+	UpdatedAt        time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (CommitteeVisibilitySetting) TableName() string {
+	return "committee_visibility_settings"
+}
+
 // MortgageResponse DTO
 type MortgageResponse struct {
 	ID              uint    `json:"id"`
@@ -558,6 +574,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&AppCounter{},
 		// Phase 7: Committee Members
 		&CommitteeMember{},
+		&CommitteeVisibilitySetting{},
 	)
 }
 

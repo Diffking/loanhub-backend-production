@@ -58,6 +58,12 @@ type CommitteeRepository interface {
 	Deactivate(ctx context.Context, id uint, removedBy uint) error
 }
 
+// CommitteeVisibilityRepository manages the singleton committee_visibility_settings row.
+type CommitteeVisibilityRepository interface {
+	Get(ctx context.Context) (*models.CommitteeVisibilitySetting, error)
+	Update(ctx context.Context, setting *models.CommitteeVisibilitySetting) error
+}
+
 // SavingsRepository defines savings_accounts repository interface.
 // Phase 3b: ใช้ดึงข้อมูลบัญชีเงินฝากของสมาชิกเพื่อคำนวณค้ำประกันเงินกู้ (cap 95%).
 type SavingsRepository interface {

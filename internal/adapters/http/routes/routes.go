@@ -31,6 +31,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 
 	// Phase 7: Committee repository
 	committeeRepo := repositories.NewCommitteeRepository(db)
+	committeeVisibilityRepo := repositories.NewCommitteeVisibilityRepository(db)
 
 	// Phase 6: Doc Check repositories
 	docItemRepo := repositories.NewDocItemRepository(db)
@@ -64,7 +65,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	dashboardService := services.NewDashboardService(db)
 
 	// Phase 7: Committee service
-	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo)
+	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo, committeeVisibilityRepo)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
@@ -239,6 +240,8 @@ func setupAPIV1Routes(
 	committeeAdminRoutes.Post("/members", committeeHandler.AddMember)
 	committeeAdminRoutes.Get("/members", committeeHandler.ListMembers)
 	committeeAdminRoutes.Delete("/members/:id", committeeHandler.RemoveMember)
+	committeeAdminRoutes.Get("/visibility", committeeHandler.GetVisibility)
+	committeeAdminRoutes.Put("/visibility", committeeHandler.UpdateVisibility)
 
 	// Phase 7 (Committee Members — viewer endpoints): any authenticated member,
 	// authorization (is active committee member) is checked inside the service.

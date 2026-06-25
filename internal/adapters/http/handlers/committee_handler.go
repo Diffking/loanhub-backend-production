@@ -142,6 +142,56 @@ func (h *CommitteeHandler) IsCommitteeMember(c *fiber.Ctx) error {
 	})
 }
 
+// GetVisibility returns the current borrower-field visibility settings (Officer/Admin)
+// @Summary Get committee borrower-field visibility settings
+// @Tags Committee
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Response
+// @Router /admin/committee/visibility [get]
+func (h *CommitteeHandler) GetVisibility(c *fiber.Ctx) error {
+	setting, err := h.committeeService.GetVisibility(c.Context())
+	if err != nil {
+		return response.InternalServerError(c, "Failed to get visibility settings")
+	}
+	return response.Success(c, "OK", setting)
+}
+
+// UpdateVisibilityRequest represents the request to update borrower-field visibility
+type UpdateVisibilityRequest struct {
+	ShowBorrowerName bool `json:"show_borrower_name"`
+	ShowMembNo       bool `json:"show_memb_no"`
+	ShowAmount       bool `json:"show_amount"`
+	ShowLoanStatus   bool `json:"show_loan_status"`
+}
+
+// UpdateVisibility updates which borrower fields committee viewers can see (Officer/Admin)
+// @Summary Update committee borrower-field visibility settings
+// @Tags Committee
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body UpdateVisibilityRequest true "Visibility settings"
+// @Success 200 {object} response.Response
+// @Router /admin/committee/visibility [put]
+func (h *CommitteeHandler) UpdateVisibility(c *fiber.Ctx) error {
+	var req UpdateVisibilityRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "Invalid request body")
+	}
+
+	setting, err := h.committeeService.UpdateVisibility(c.Context(), &services.UpdateVisibilityInput{
+		ShowBorrowerName: req.ShowBorrowerName,
+		ShowMembNo:       req.ShowMembNo,
+		ShowAmount:       req.ShowAmount,
+		ShowLoanStatus:   req.ShowLoanStatus,
+	})
+	if err != nil {
+		return response.InternalServerError(c, "Failed to update visibility settings")
+	}
+	return response.Success(c, "Visibility settings updated successfully", setting)
+}
+
 // ListBorrowersByMonth returns all loan applicants for a given month/year (committee members only)
 // @Summary List borrowers by month
 // @Tags Committee

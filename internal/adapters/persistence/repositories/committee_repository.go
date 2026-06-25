@@ -90,3 +90,30 @@ func (r *committeeRepository) Deactivate(ctx context.Context, id uint, removedBy
 			"removed_at": now,
 		}).Error
 }
+
+// committeeVisibilityRepository implements CommitteeVisibilityRepository.
+type committeeVisibilityRepository struct {
+	db *gorm.DB
+}
+
+// NewCommitteeVisibilityRepository creates a new committee visibility repository
+func NewCommitteeVisibilityRepository(db *gorm.DB) CommitteeVisibilityRepository {
+	return &committeeVisibilityRepository{db: db}
+}
+
+// Get returns the singleton visibility settings row, creating it (all fields
+// visible by default) on first use.
+func (r *committeeVisibilityRepository) Get(ctx context.Context) (*models.CommitteeVisibilitySetting, error) {
+	var setting models.CommitteeVisibilitySetting
+	err := r.db.WithContext(ctx).FirstOrCreate(&setting, models.CommitteeVisibilitySetting{ID: 1}).Error
+	if err != nil {
+		return nil, err
+	}
+	return &setting, nil
+}
+
+// Update saves the singleton visibility settings row.
+func (r *committeeVisibilityRepository) Update(ctx context.Context, setting *models.CommitteeVisibilitySetting) error {
+	setting.ID = 1
+	return r.db.WithContext(ctx).Save(setting).Error
+}

@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SPSC loanEasy — a Go REST API backend (module `spsc-loaneasy`) for a cooperative loan/mortgage system. Built with Fiber v2, GORM (MySQL), JWT auth, LINE Login/LIFF integration, and a cron-based notification job. Deployed via Docker to a Hostinger VPS at `/var/www/loaneasy`.
 
+This backend serves two separate frontends, each its own repo, both consuming this API over HTTPS at `https://api.loanspsc.com`. Their origins must both be present in `ALLOWED_ORIGINS` (CORS) and `WEB_APP_URL` (links sent out, e.g. in LINE notifications). When changing auth/cookie/CORS behavior here, check impact on both.
+
+- **Admin** (`spsc-loaneasy-admin`) — `D:\File_Claude\SPSC-loaneasy\frontend_admin` — GitHub: `Diffking/Frontend-AdminOfficer-EasyLoan`
+- **User** (`spsc-liff`, LIFF-based) — `D:\File_Claude\SPSC-loaneasy\frontend-user\frontend_user_handoff` — GitHub: `Diffking/Frontend-User-EasyLoan`
+
 ## Git workflow (required)
 
 `main` is the stable trunk. Never commit or push directly to `main`. Create a new branch off `main` for any new feature/fix, verify it works, then merge back. This lets the team fall back to `main` immediately if a branch breaks something.

@@ -301,6 +301,7 @@ func setupProfileRoutes(router fiber.Router, handler *handlers.UserHandler) {
 // setupMortgageRoutes configures mortgage routes (Phase 4)
 func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler, cfg *config.Config) {
 	router.Get("/my", handler.GetMyMortgages)
+	router.Put("/:id/consent", handler.SetConsent)
 
 	officerRoutes := router.Group("")
 	officerRoutes.Use(middleware.OfficerOrAdmin())

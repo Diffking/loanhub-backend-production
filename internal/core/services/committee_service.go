@@ -170,6 +170,7 @@ func (s *CommitteeService) IsActiveMember(ctx context.Context, membNo string) (b
 // zero value (empty string / 0).
 type BorrowerRow struct {
 	MortgageID   uint      `json:"mortgage_id"`
+	Consented    bool      `json:"consented"` // PDPA: false = ผู้กู้ไม่ยินยอม/ยังไม่ตอบ — ฟิลด์อื่นด้านล่างจะเป็น null ทั้งหมด
 	MembNo       *string   `json:"memb_no"`
 	BorrowerName *string   `json:"borrower_name"`
 	Amount       *float64  `json:"amount"`
@@ -221,7 +222,16 @@ func (s *CommitteeService) ListBorrowersByMonth(ctx context.Context, requesterMe
 		row := &BorrowerRow{
 			MortgageID: m.ID,
 			CreatedAt:  m.CreatedAt,
+			Consented:  m.CommitteeConsent != nil && *m.CommitteeConsent,
 		}
+
+		// PDPA: ไม่ยินยอม (หรือยังไม่ตอบ) → ไม่แสดงรายละเอียดใดๆ เลย
+		// ไม่ว่า visibility settings จะเปิดฟิลด์ไหนไว้ก็ตาม
+		if !row.Consented {
+			borrowers = append(borrowers, row)
+			continue
+		}
+
 		if visibility.ShowMembNo {
 			row.MembNo = &m.MembNo
 		}

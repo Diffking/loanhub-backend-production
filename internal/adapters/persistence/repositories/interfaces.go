@@ -74,6 +74,12 @@ type CommitteeVisibilityRepository interface {
 	Update(ctx context.Context, setting *models.CommitteeVisibilitySetting) error
 }
 
+// PDPASettingRepository manages the singleton pdpa_settings row.
+type PDPASettingRepository interface {
+	Get(ctx context.Context) (*models.PDPASetting, error)
+	Update(ctx context.Context, setting *models.PDPASetting) error
+}
+
 // SavingsRepository defines savings_accounts repository interface.
 // Phase 3b: ใช้ดึงข้อมูลบัญชีเงินฝากของสมาชิกเพื่อคำนวณค้ำประกันเงินกู้ (cap 95%).
 type SavingsRepository interface {

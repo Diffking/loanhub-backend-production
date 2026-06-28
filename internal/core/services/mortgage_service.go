@@ -305,6 +305,29 @@ func (s *MortgageService) Approve(ctx context.Context, mortgageID uint, input *A
 	return mortgage, nil
 }
 
+// SetConsent records the borrower's own PDPA consent decision for whether
+// committee members may view this mortgage application in the borrower-list
+// aggregate view. Only the mortgage's own member (requesterMembNo) may set it.
+func (s *MortgageService) SetConsent(ctx context.Context, mortgageID uint, consent bool, requesterMembNo string) (*models.Mortgage, error) {
+	mortgage, err := s.mortgageRepo.GetByID(ctx, mortgageID)
+	if err != nil {
+		return nil, ErrMortgageNotFound
+	}
+
+	if mortgage.MembNo != requesterMembNo {
+		return nil, ErrNotAuthorized
+	}
+
+	now := time.Now()
+	mortgage.CommitteeConsent = &consent
+	mortgage.CommitteeConsentAt = &now
+
+	if err := s.mortgageRepo.Update(ctx, mortgage); err != nil {
+		return nil, err
+	}
+	return mortgage, nil
+}
+
 type RejectInput struct {
 	Remark string `json:"remark" validate:"required"`
 }

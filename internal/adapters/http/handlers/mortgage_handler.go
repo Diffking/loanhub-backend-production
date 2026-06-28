@@ -762,3 +762,52 @@ func (h *MortgageHandler) UpdateAmount(c *fiber.Ctx) error {
 		"mortgage": mortgage.ToResponse(),
 	})
 }
+
+// SetConsentRequest represents the request to set PDPA committee-view consent
+type SetConsentRequest struct {
+	Consent bool `json:"consent"`
+}
+
+// SetConsent records the borrower's own PDPA consent for whether committee
+// members may view this mortgage in the borrower-list view (member only)
+// @Summary Set PDPA committee-view consent
+// @Description Borrower records consent/non-consent for committee members to view this mortgage
+// @Tags Mortgages
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Mortgage ID"
+// @Param body body SetConsentRequest true "Consent decision"
+// @Success 200 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /mortgages/{id}/consent [put]
+func (h *MortgageHandler) SetConsent(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 32)
+	if err != nil {
+		return response.BadRequest(c, "Invalid mortgage ID")
+	}
+
+	var req SetConsentRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "Invalid request body")
+	}
+
+	membNo, _ := c.Locals("membNo").(string)
+
+	mortgage, err := h.mortgageService.SetConsent(c.Context(), uint(id), req.Consent, membNo)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrMortgageNotFound):
+			return response.NotFound(c, "Mortgage not found")
+		case errors.Is(err, services.ErrNotAuthorized):
+			return response.Forbidden(c, "You can only set consent on your own mortgage")
+		default:
+			return response.InternalServerError(c, "Failed to set consent")
+		}
+	}
+
+	return response.Success(c, "Consent recorded successfully", fiber.Map{
+		"mortgage": mortgage.ToResponse(),
+	})
+}

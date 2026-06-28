@@ -192,6 +192,69 @@ func (h *CommitteeHandler) UpdateVisibility(c *fiber.Ctx) error {
 	return response.Success(c, "Visibility settings updated successfully", setting)
 }
 
+// GetPDPASettings returns the current PDPA feature toggles (Officer/Admin)
+// @Summary Get PDPA feature toggles
+// @Tags Committee
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Response
+// @Router /admin/committee/pdpa-settings [get]
+func (h *CommitteeHandler) GetPDPASettings(c *fiber.Ctx) error {
+	setting, err := h.committeeService.GetPDPASettings(c.Context())
+	if err != nil {
+		return response.InternalServerError(c, "Failed to get PDPA settings")
+	}
+	return response.Success(c, "OK", setting)
+}
+
+// UpdatePDPASettingsRequest represents the request to update PDPA feature toggles
+type UpdatePDPASettingsRequest struct {
+	ConsentRequired bool `json:"consent_required"`
+	InfoPageEnabled bool `json:"info_page_enabled"`
+}
+
+// UpdatePDPASettings updates the PDPA feature toggles (Officer/Admin)
+// @Summary Update PDPA feature toggles
+// @Tags Committee
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body UpdatePDPASettingsRequest true "PDPA settings"
+// @Success 200 {object} response.Response
+// @Router /admin/committee/pdpa-settings [put]
+func (h *CommitteeHandler) UpdatePDPASettings(c *fiber.Ctx) error {
+	var req UpdatePDPASettingsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.BadRequest(c, "Invalid request body")
+	}
+
+	setting, err := h.committeeService.UpdatePDPASettings(c.Context(), &services.UpdatePDPASettingsInput{
+		ConsentRequired: req.ConsentRequired,
+		InfoPageEnabled: req.InfoPageEnabled,
+	})
+	if err != nil {
+		return response.InternalServerError(c, "Failed to update PDPA settings")
+	}
+	return response.Success(c, "PDPA settings updated successfully", setting)
+}
+
+// GetPDPAStatus returns the current PDPA feature toggles for any
+// authenticated member (so the frontend knows whether to show the consent
+// popup / info page menu)
+// @Summary Get PDPA feature status (any authenticated member)
+// @Tags Committee
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Response
+// @Router /committee/pdpa-status [get]
+func (h *CommitteeHandler) GetPDPAStatus(c *fiber.Ctx) error {
+	setting, err := h.committeeService.GetPDPASettings(c.Context())
+	if err != nil {
+		return response.InternalServerError(c, "Failed to get PDPA status")
+	}
+	return response.Success(c, "OK", setting)
+}
+
 // ListBorrowersByMonth returns all loan applicants for a given month/year (committee members only)
 // @Summary List borrowers by month
 // @Tags Committee

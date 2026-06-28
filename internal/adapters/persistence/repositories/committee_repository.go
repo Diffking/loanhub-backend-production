@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"spsc-loaneasy/internal/adapters/persistence/models"
@@ -151,8 +152,22 @@ func NewPDPASettingRepository(db *gorm.DB) PDPASettingRepository {
 // off by default — "built but not switched on") on first use.
 func (r *pdpaSettingRepository) Get(ctx context.Context) (*models.PDPASetting, error) {
 	var setting models.PDPASetting
-	err := r.db.WithContext(ctx).FirstOrCreate(&setting, models.PDPASetting{ID: 1}).Error
-	if err != nil {
+	err := r.db.WithContext(ctx).First(&setting, 1).Error
+	if err == nil {
+		return &setting, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// Seed the singleton row with the cooperative's already-approved PDPA
+	// notice as the default article text, so it isn't blank on first use.
+	setting = models.PDPASetting{
+		ID:             1,
+		ArticleTitle:   models.DefaultPDPAArticleTitle,
+		ArticleContent: models.DefaultPDPAArticleContent,
+	}
+	if err := r.db.WithContext(ctx).Create(&setting).Error; err != nil {
 		return nil, err
 	}
 	return &setting, nil

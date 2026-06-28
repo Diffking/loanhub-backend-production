@@ -136,3 +136,30 @@ func (r *committeeVisibilityRepository) Update(ctx context.Context, setting *mod
 	setting.ID = 1
 	return r.db.WithContext(ctx).Save(setting).Error
 }
+
+// pdpaSettingRepository implements PDPASettingRepository.
+type pdpaSettingRepository struct {
+	db *gorm.DB
+}
+
+// NewPDPASettingRepository creates a new PDPA setting repository
+func NewPDPASettingRepository(db *gorm.DB) PDPASettingRepository {
+	return &pdpaSettingRepository{db: db}
+}
+
+// Get returns the singleton PDPA settings row, creating it (both features
+// off by default — "built but not switched on") on first use.
+func (r *pdpaSettingRepository) Get(ctx context.Context) (*models.PDPASetting, error) {
+	var setting models.PDPASetting
+	err := r.db.WithContext(ctx).FirstOrCreate(&setting, models.PDPASetting{ID: 1}).Error
+	if err != nil {
+		return nil, err
+	}
+	return &setting, nil
+}
+
+// Update saves the singleton PDPA settings row.
+func (r *pdpaSettingRepository) Update(ctx context.Context, setting *models.PDPASetting) error {
+	setting.ID = 1
+	return r.db.WithContext(ctx).Save(setting).Error
+}

@@ -32,6 +32,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 7: Committee repository
 	committeeRepo := repositories.NewCommitteeRepository(db)
 	committeeVisibilityRepo := repositories.NewCommitteeVisibilityRepository(db)
+	pdpaSettingRepo := repositories.NewPDPASettingRepository(db)
 
 	// Phase 6: Doc Check repositories
 	docItemRepo := repositories.NewDocItemRepository(db)
@@ -71,7 +72,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	dashboardService := services.NewDashboardService(db)
 
 	// Phase 7: Committee service
-	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo, committeeVisibilityRepo)
+	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo, committeeVisibilityRepo, pdpaSettingRepo)
 
 	// Initialize handlers
 	healthHandler := handlers.NewHealthHandler()
@@ -245,6 +246,8 @@ func setupAPIV1Routes(
 	committeeAdminRoutes.Delete("/members/:id", committeeHandler.RemoveMember)
 	committeeAdminRoutes.Get("/visibility", committeeHandler.GetVisibility)
 	committeeAdminRoutes.Put("/visibility", committeeHandler.UpdateVisibility)
+	committeeAdminRoutes.Get("/pdpa-settings", committeeHandler.GetPDPASettings)
+	committeeAdminRoutes.Put("/pdpa-settings", committeeHandler.UpdatePDPASettings)
 
 	// Phase 7 (Committee Members — viewer endpoints): any authenticated member,
 	// authorization (is active committee member) is checked inside the service.
@@ -252,6 +255,7 @@ func setupAPIV1Routes(
 	committeeViewerRoutes.Use(middleware.AuthMiddleware(cfg))
 	committeeViewerRoutes.Get("/me", committeeHandler.IsCommitteeMember)
 	committeeViewerRoutes.Get("/borrowers", committeeHandler.ListBorrowersByMonth)
+	committeeViewerRoutes.Get("/pdpa-status", committeeHandler.GetPDPAStatus)
 }
 
 // setupAuthRoutes configures authentication routes

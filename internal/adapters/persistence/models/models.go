@@ -305,6 +305,21 @@ func (CommitteeVisibilitySetting) TableName() string {
 	return "committee_visibility_settings"
 }
 
+// PDPASetting is a singleton row (ID always 1) controlling the PDPA
+// consent feature for the committee borrower-list view. Both fields
+// default to false ("built but not yet switched on") until an
+// Officer/Admin explicitly enables them.
+type PDPASetting struct {
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	ConsentRequired bool      `gorm:"not null;default:false" json:"consent_required"`
+	InfoPageEnabled bool      `gorm:"not null;default:false" json:"info_page_enabled"`
+	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (PDPASetting) TableName() string {
+	return "pdpa_settings"
+}
+
 // MortgageResponse DTO
 type MortgageResponse struct {
 	ID              uint     `json:"id"`
@@ -586,6 +601,7 @@ func AutoMigrate(db *gorm.DB) error {
 		// Phase 7: Committee Members
 		&CommitteeMember{},
 		&CommitteeVisibilitySetting{},
+		&PDPASetting{},
 	)
 }
 

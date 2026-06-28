@@ -26,6 +26,7 @@ type CommitteeService struct {
 	memberRepo     repositories.MemberRepository
 	mortgageRepo   *repositories.MortgageRepository
 	visibilityRepo repositories.CommitteeVisibilityRepository
+	pdpaRepo       repositories.PDPASettingRepository
 }
 
 func NewCommitteeService(
@@ -33,13 +34,37 @@ func NewCommitteeService(
 	memberRepo repositories.MemberRepository,
 	mortgageRepo *repositories.MortgageRepository,
 	visibilityRepo repositories.CommitteeVisibilityRepository,
+	pdpaRepo repositories.PDPASettingRepository,
 ) *CommitteeService {
 	return &CommitteeService{
 		committeeRepo:  committeeRepo,
 		memberRepo:     memberRepo,
 		mortgageRepo:   mortgageRepo,
 		visibilityRepo: visibilityRepo,
+		pdpaRepo:       pdpaRepo,
 	}
+}
+
+// GetPDPASettings returns the current PDPA feature toggles.
+func (s *CommitteeService) GetPDPASettings(ctx context.Context) (*models.PDPASetting, error) {
+	return s.pdpaRepo.Get(ctx)
+}
+
+type UpdatePDPASettingsInput struct {
+	ConsentRequired bool `json:"consent_required"`
+	InfoPageEnabled bool `json:"info_page_enabled"`
+}
+
+// UpdatePDPASettings saves new PDPA feature toggles.
+func (s *CommitteeService) UpdatePDPASettings(ctx context.Context, input *UpdatePDPASettingsInput) (*models.PDPASetting, error) {
+	setting := &models.PDPASetting{
+		ConsentRequired: input.ConsentRequired,
+		InfoPageEnabled: input.InfoPageEnabled,
+	}
+	if err := s.pdpaRepo.Update(ctx, setting); err != nil {
+		return nil, err
+	}
+	return setting, nil
 }
 
 // GetVisibility returns the current borrower-field visibility settings.
@@ -217,12 +242,19 @@ func (s *CommitteeService) ListBorrowersByMonth(ctx context.Context, requesterMe
 		return nil, err
 	}
 
+	pdpa, err := s.pdpaRepo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	borrowers := make([]*BorrowerRow, 0, len(mortgages))
 	for _, m := range mortgages {
 		row := &BorrowerRow{
 			MortgageID: m.ID,
 			CreatedAt:  m.CreatedAt,
-			Consented:  m.CommitteeConsent != nil && *m.CommitteeConsent,
+			// ถ้ายังไม่เปิดใช้ฟีเจอร์ PDPA consent (pdpa.ConsentRequired=false)
+			// ถือว่าทุกคน "ยินยอม" — ไม่บังคับขอความยินยอมจนกว่า Admin จะเปิดใช้
+			Consented: !pdpa.ConsentRequired || (m.CommitteeConsent != nil && *m.CommitteeConsent),
 		}
 
 		// PDPA: ไม่ยินยอม (หรือยังไม่ตอบ) → ไม่แสดงรายละเอียดใดๆ เลย

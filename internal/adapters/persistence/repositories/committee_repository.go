@@ -154,6 +154,16 @@ func (r *pdpaSettingRepository) Get(ctx context.Context) (*models.PDPASetting, e
 	var setting models.PDPASetting
 	err := r.db.WithContext(ctx).First(&setting, 1).Error
 	if err == nil {
+		// Backfill: row already existed (e.g. created before article fields
+		// were added) but has no article text yet — seed it now rather than
+		// showing a blank page.
+		if setting.ArticleContent == "" {
+			setting.ArticleTitle = models.DefaultPDPAArticleTitle
+			setting.ArticleContent = models.DefaultPDPAArticleContent
+			if err := r.Update(ctx, &setting); err != nil {
+				return nil, err
+			}
+		}
 		return &setting, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {

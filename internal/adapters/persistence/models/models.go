@@ -92,14 +92,14 @@ type Flommast struct {
 	DeptName     string  `gorm:"column:dept_name;size:200" json:"dept_name"`
 	Addr         string  `gorm:"column:addr;type:text" json:"addr"`
 	MastSalary   float64 `gorm:"column:mast_salary;type:decimal(12,2)" json:"mast_salary"`
-	MastTel   string  `gorm:"column:mast_tel;size:50" json:"mast_tel"`
+	MastTel      string  `gorm:"column:mast_tel;size:50" json:"mast_tel"`
 	MastMobile   string  `gorm:"column:mast_mobile;size:50" json:"mast_mobile"`
 	MastAccNo    string  `gorm:"column:mast_acc_no;size:30" json:"mast_acc_no"`
 	MastBankAcno string  `gorm:"column:mast_bank_acno;size:30" json:"mast_bank_acno"`
 	// 🆕 Phase 3c: Member share info (สำหรับใบคำขอกู้)
-	MastPaidAmt    float64 `gorm:"column:mast_paid_amt;type:decimal(13,2);not null;default:0.00" json:"mast_paid_amt"`
-	MastPaidTime   int     `gorm:"column:mast_paid_time;not null;default:0" json:"mast_paid_time"`
-	MastMembDept   string  `gorm:"column:mast_memb_dept;size:20;not null;default:''" json:"mast_memb_dept"`
+	MastPaidAmt  float64 `gorm:"column:mast_paid_amt;type:decimal(13,2);not null;default:0.00" json:"mast_paid_amt"`
+	MastPaidTime int     `gorm:"column:mast_paid_time;not null;default:0" json:"mast_paid_time"`
+	MastMembDept string  `gorm:"column:mast_memb_dept;size:20;not null;default:''" json:"mast_memb_dept"`
 	// 🆕 Phase 3b: Loan collateral
 	MastPrindAmt   float64 `gorm:"column:mast_prind_amt;type:decimal(13,2);default:0.00" json:"mast_prind_amt"`
 	MemberTypeCode string  `gorm:"column:member_type_code;size:10;default:'';index" json:"member_type_code"`
@@ -210,19 +210,19 @@ func (LoanAppt) TableName() string {
 
 // Mortgage ข้อมูลจำนอง (ตารางหลัก)
 type Mortgage struct {
-	ID              uint    `gorm:"primaryKey" json:"id"`
-	ContractNo      *string `gorm:"size:50;uniqueIndex" json:"contract_no"`
-	MembNo          string  `gorm:"size:20;not null;index" json:"memb_no"`
-	OfficerID       uint    `gorm:"not null" json:"officer_id"`
-	UserID          uint    `gorm:"not null" json:"user_id"`
+	ID              uint     `gorm:"primaryKey" json:"id"`
+	ContractNo      *string  `gorm:"size:50;uniqueIndex" json:"contract_no"`
+	MembNo          string   `gorm:"size:20;not null;index" json:"memb_no"`
+	OfficerID       uint     `gorm:"not null" json:"officer_id"`
+	UserID          uint     `gorm:"not null" json:"user_id"`
 	Amount          float64  `gorm:"type:decimal(15,2);not null" json:"amount"`
 	ApprovedAmount  *float64 `gorm:"type:decimal(15,2)" json:"approved_amount"`
-	Collateral      string  `gorm:"type:text" json:"collateral"`
-	Purpose         string  `gorm:"type:text" json:"purpose"`
-	GuarantorMembNo *string `gorm:"size:20" json:"guarantor_memb_no"`
-	LoanTypeID      uint    `gorm:"not null" json:"loan_type_id"`
-	InterestRate    float64 `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
-	CurrentStepID   uint    `gorm:"not null" json:"current_step_id"`
+	Collateral      string   `gorm:"type:text" json:"collateral"`
+	Purpose         string   `gorm:"type:text" json:"purpose"`
+	GuarantorMembNo *string  `gorm:"size:20" json:"guarantor_memb_no"`
+	LoanTypeID      uint     `gorm:"not null" json:"loan_type_id"`
+	InterestRate    float64  `gorm:"type:decimal(5,2);not null" json:"interest_rate"`
+	CurrentStepID   uint     `gorm:"not null" json:"current_step_id"`
 
 	// Appointment fields (ย้ายมาจาก loan_appt_currents)
 	CurrentApptID *uint      `json:"current_appt_id"` // FK to loan_appts (master) - ประเภทนัดหมาย
@@ -237,6 +237,11 @@ type Mortgage struct {
 	ApprovedBy *uint      `json:"approved_by"`
 	ApprovedAt *time.Time `json:"approved_at"`
 	Remark     string     `gorm:"type:text" json:"remark"`
+
+	// Phase 7 (PDPA): ความยินยอมให้คณะกรรมการเห็นข้อมูลคำขอกู้นี้
+	// nil = ยังไม่ตอบ, true = ยินยอม, false = ไม่ยินยอม
+	CommitteeConsent   *bool      `json:"committee_consent"`
+	CommitteeConsentAt *time.Time `json:"committee_consent_at"`
 
 	// Timestamps
 	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
@@ -302,23 +307,23 @@ func (CommitteeVisibilitySetting) TableName() string {
 
 // MortgageResponse DTO
 type MortgageResponse struct {
-	ID              uint    `json:"id"`
-	ContractNo      *string `json:"contract_no"`
-	MembNo          string  `json:"memb_no"`
-	MemberName      string  `json:"member_name,omitempty"`
-	OfficerID       uint    `json:"officer_id"`
-	OfficerName     string  `json:"officer_name,omitempty"`
+	ID              uint     `json:"id"`
+	ContractNo      *string  `json:"contract_no"`
+	MembNo          string   `json:"memb_no"`
+	MemberName      string   `json:"member_name,omitempty"`
+	OfficerID       uint     `json:"officer_id"`
+	OfficerName     string   `json:"officer_name,omitempty"`
 	Amount          float64  `json:"amount"`
 	ApprovedAmount  *float64 `json:"approved_amount"`
-	Collateral      string  `json:"collateral"`
-	Purpose         string  `json:"purpose"`
-	GuarantorMembNo *string `json:"guarantor_memb_no"`
-	LoanTypeID      uint    `json:"loan_type_id"`
-	LoanTypeName    string  `json:"loan_type_name,omitempty"`
-	InterestRate    float64 `json:"interest_rate"`
-	CurrentStepID   uint    `json:"current_step_id"`
-	CurrentStepCode string  `json:"current_step_code,omitempty"`
-	CurrentStepName string  `json:"current_step_name,omitempty"`
+	Collateral      string   `json:"collateral"`
+	Purpose         string   `json:"purpose"`
+	GuarantorMembNo *string  `json:"guarantor_memb_no"`
+	LoanTypeID      uint     `json:"loan_type_id"`
+	LoanTypeName    string   `json:"loan_type_name,omitempty"`
+	InterestRate    float64  `json:"interest_rate"`
+	CurrentStepID   uint     `json:"current_step_id"`
+	CurrentStepCode string   `json:"current_step_code,omitempty"`
+	CurrentStepName string   `json:"current_step_name,omitempty"`
 
 	// Appointment info
 	CurrentApptID   *uint     `json:"current_appt_id"`
@@ -339,6 +344,10 @@ type MortgageResponse struct {
 	Remark     string     `json:"remark"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+
+	// PDPA: ความยินยอมให้คณะกรรมการเห็นข้อมูลคำขอกู้นี้
+	CommitteeConsent   *bool      `json:"committee_consent"`
+	CommitteeConsentAt *time.Time `json:"committee_consent_at"`
 }
 
 func (m *Mortgage) ToResponse() *MortgageResponse {
@@ -364,6 +373,9 @@ func (m *Mortgage) ToResponse() *MortgageResponse {
 		Remark:          m.Remark,
 		CreatedAt:       m.CreatedAt,
 		UpdatedAt:       m.UpdatedAt,
+
+		CommitteeConsent:   m.CommitteeConsent,
+		CommitteeConsentAt: m.CommitteeConsentAt,
 	}
 
 	// Format appt_date
@@ -528,7 +540,6 @@ func (m *MortgageDocCheck) ToResponse() *MortgageDocCheckResponse {
 // Auto Migration
 // ============================================================
 
-
 // ============================================================
 // Phase 1 (Loan Print): Loan Purpose (FLOPRESN)
 // ============================================================
@@ -604,7 +615,6 @@ func (AppCounter) TableName() string {
 const (
 	AppCounterKindLoanPrint = "loan_print"
 )
-
 
 // ============================================================
 // Phase 3b: Savings accounts (for loan collateral)

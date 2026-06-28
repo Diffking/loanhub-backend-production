@@ -209,8 +209,10 @@ func (h *CommitteeHandler) GetPDPASettings(c *fiber.Ctx) error {
 
 // UpdatePDPASettingsRequest represents the request to update PDPA feature toggles
 type UpdatePDPASettingsRequest struct {
-	ConsentRequired bool `json:"consent_required"`
-	InfoPageEnabled bool `json:"info_page_enabled"`
+	ConsentRequired bool   `json:"consent_required"`
+	InfoPageEnabled bool   `json:"info_page_enabled"`
+	ArticleTitle    string `json:"article_title"`
+	ArticleContent  string `json:"article_content"`
 }
 
 // UpdatePDPASettings updates the PDPA feature toggles (Officer/Admin)
@@ -231,6 +233,8 @@ func (h *CommitteeHandler) UpdatePDPASettings(c *fiber.Ctx) error {
 	setting, err := h.committeeService.UpdatePDPASettings(c.Context(), &services.UpdatePDPASettingsInput{
 		ConsentRequired: req.ConsentRequired,
 		InfoPageEnabled: req.InfoPageEnabled,
+		ArticleTitle:    req.ArticleTitle,
+		ArticleContent:  req.ArticleContent,
 	})
 	if err != nil {
 		return response.InternalServerError(c, "Failed to update PDPA settings")

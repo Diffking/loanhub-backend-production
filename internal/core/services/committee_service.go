@@ -51,15 +51,19 @@ func (s *CommitteeService) GetPDPASettings(ctx context.Context) (*models.PDPASet
 }
 
 type UpdatePDPASettingsInput struct {
-	ConsentRequired bool `json:"consent_required"`
-	InfoPageEnabled bool `json:"info_page_enabled"`
+	ConsentRequired bool   `json:"consent_required"`
+	InfoPageEnabled bool   `json:"info_page_enabled"`
+	ArticleTitle    string `json:"article_title"`
+	ArticleContent  string `json:"article_content"`
 }
 
-// UpdatePDPASettings saves new PDPA feature toggles.
+// UpdatePDPASettings saves new PDPA feature toggles and/or article text.
 func (s *CommitteeService) UpdatePDPASettings(ctx context.Context, input *UpdatePDPASettingsInput) (*models.PDPASetting, error) {
 	setting := &models.PDPASetting{
 		ConsentRequired: input.ConsentRequired,
 		InfoPageEnabled: input.InfoPageEnabled,
+		ArticleTitle:    input.ArticleTitle,
+		ArticleContent:  input.ArticleContent,
 	}
 	if err := s.pdpaRepo.Update(ctx, setting); err != nil {
 		return nil, err

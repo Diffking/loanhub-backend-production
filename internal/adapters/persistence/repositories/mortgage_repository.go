@@ -62,6 +62,7 @@ func (r *MortgageRepository) List(ctx context.Context, offset, limit int) ([]*mo
 
 	err := r.db.WithContext(ctx).
 		Preload("Officer").
+		Preload("Creator").
 		Preload("LoanType").
 		Preload("CurrentStep").
 		Preload("CurrentAppt").
@@ -81,6 +82,7 @@ func (r *MortgageRepository) ListByOfficer(ctx context.Context, officerID uint, 
 	r.db.WithContext(ctx).Model(&models.Mortgage{}).Where("officer_id = ?", officerID).Count(&total)
 
 	err := r.db.WithContext(ctx).
+		Preload("Creator").
 		Preload("LoanType").
 		Preload("CurrentStep").
 		Preload("CurrentAppt").
@@ -102,6 +104,7 @@ func (r *MortgageRepository) ListByStep(ctx context.Context, stepID uint, offset
 
 	err := r.db.WithContext(ctx).
 		Preload("Officer").
+		Preload("Creator").
 		Preload("LoanType").
 		Preload("CurrentStep").
 		Preload("CurrentAppt").

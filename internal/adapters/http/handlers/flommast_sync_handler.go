@@ -234,8 +234,8 @@ func (h *FlommastSyncHandler) Status(c *fiber.Ctx) error {
 	}
 
 	return response.Success(c, "ok", fiber.Map{
-		"schedule_human": "จันทร์-พุธ 21:00 (Asia/Bangkok)",
-		"schedule_cron":  "0 21 * * 1-3",
+		"schedule_human": "ทุกวัน 09:00 (Asia/Bangkok)",
+		"schedule_cron":  "0 9 * * *",
 		"next_run_at":    nextScheduledRun(time.Now()),
 		"last_sync":      latestPtr,
 	})
@@ -489,7 +489,7 @@ func defaultStr(v, fallback string) string {
 	return v
 }
 
-// nextScheduledRun returns the next Mon/Tue/Wed 21:00 in Asia/Bangkok timezone.
+// nextScheduledRun returns the next daily 09:00 in Asia/Bangkok timezone.
 // Used by Status endpoint so admin UI can show countdown.
 func nextScheduledRun(now time.Time) time.Time {
 	loc, err := time.LoadLocation("Asia/Bangkok")
@@ -497,16 +497,9 @@ func nextScheduledRun(now time.Time) time.Time {
 		loc = time.UTC
 	}
 	n := now.In(loc)
-	for i := 0; i < 8; i++ {
-		candidate := time.Date(
-			n.Year(), n.Month(), n.Day()+i,
-			21, 0, 0, 0, loc,
-		)
-		wd := candidate.Weekday()
-		if (wd == time.Monday || wd == time.Tuesday || wd == time.Wednesday) &&
-			candidate.After(n) {
-			return candidate
-		}
+	candidate := time.Date(n.Year(), n.Month(), n.Day(), 9, 0, 0, 0, loc)
+	if !candidate.After(n) {
+		candidate = candidate.AddDate(0, 0, 1)
 	}
-	return n // unreachable
+	return candidate
 }

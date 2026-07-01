@@ -229,13 +229,16 @@ func setupAPIV1Routes(
 	flommastAdminRoutes.Use(middleware.AdminOnly())
 	setupFlommastImportRoutes(flommastAdminRoutes, flommastImportHandler)
 
-	// Phase 2 (Flommast Sync — admin UI endpoints): JWT/Admin
-	flommastAdminRoutes.Get("/sync-history", flommastSyncHandler.History)
-	flommastAdminRoutes.Get("/sync-status", flommastSyncHandler.Status)
-
 	// Phase 3A (Missing members — list + bulk delete): JWT/Admin
 	flommastAdminRoutes.Get("/missing", flommastSyncHandler.Missing)
 	flommastAdminRoutes.Delete("/missing", flommastSyncHandler.DeleteMissing)
+
+	// Phase 2 (Flommast Sync — read-only monitoring): Officer + Admin
+	flommastMonitorRoutes := router.Group("/admin/flommast")
+	flommastMonitorRoutes.Use(middleware.AuthMiddleware(cfg))
+	flommastMonitorRoutes.Use(middleware.OfficerOrAdmin())
+	flommastMonitorRoutes.Get("/sync-history", flommastSyncHandler.History)
+	flommastMonitorRoutes.Get("/sync-status", flommastSyncHandler.Status)
 
 	// Phase 7 (Committee Members — designation management): Officer/Admin
 	committeeAdminRoutes := router.Group("/admin/committee")

@@ -71,6 +71,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// Phase 5: Dashboard service
 	dashboardService := services.NewDashboardService(db)
 
+	// Phase 8: Report service (รายงานประจำเดือน แยกตามขั้นตอน)
+	reportService := services.NewReportService(db)
+
 	// Phase 7: Committee service
 	committeeService := services.NewCommitteeService(committeeRepo, memberRepo, mortgageRepo, committeeVisibilityRepo, pdpaSettingRepo)
 
@@ -85,6 +88,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 
 	// Phase 5: Dashboard handler
 	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
+
+	// Phase 8: Report handler
+	reportHandler := handlers.NewReportHandler(reportService)
 
 	// Phase 7: Committee handler
 	committeeHandler := handlers.NewCommitteeHandler(committeeService)
@@ -138,7 +144,8 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	apiV1 := app.Group("/api/v1")
 	setupAPIV1Routes(apiV1, healthHandler, authHandler, userHandler, mortgageHandler,
 		masterHandler, dashboardHandler, lineHandler, liffHandler, docCheckHandler,
-		loanPrintHandler, flommastImportHandler, flommastSyncHandler, committeeHandler, cfg)
+		loanPrintHandler, flommastImportHandler, flommastSyncHandler, committeeHandler,
+		reportHandler, cfg)
 
 	// API v2 group (Mobile-optimized)
 	apiV2 := app.Group("/api/v2")
@@ -161,6 +168,7 @@ func setupAPIV1Routes(
 	flommastImportHandler *handlers.FlommastImportHandler,
 	flommastSyncHandler *handlers.FlommastSyncHandler,
 	committeeHandler *handlers.CommitteeHandler,
+	reportHandler *handlers.ReportHandler,
 	cfg *config.Config,
 ) {
 	// API Info
@@ -208,6 +216,12 @@ func setupAPIV1Routes(
 	dashboardRoutes := router.Group("/dashboard")
 	dashboardRoutes.Use(middleware.AuthMiddleware(cfg))
 	setupDashboardRoutes(dashboardRoutes, dashboardHandler)
+
+	// Phase 8: Report routes (Officer + Admin)
+	reportRoutes := router.Group("/reports")
+	reportRoutes.Use(middleware.AuthMiddleware(cfg))
+	reportRoutes.Use(middleware.OfficerOrAdmin())
+	reportRoutes.Get("/monthly-steps", reportHandler.GetMonthlyStepReport)
 
 	// Phase 1 (Loan Print): Officer + Admin
 	loanPrintRoutes := router.Group("/loan-print")

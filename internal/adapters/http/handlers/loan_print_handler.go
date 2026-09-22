@@ -279,7 +279,7 @@ func (h *LoanPrintHandler) GetCollateral(c *fiber.Ctx) error {
 	// 1. Get member (for mast_prind_amt)
 	m, err := h.memberRepo.GetFullByMembNo(ctx, membNo)
 	if err != nil {
-		return response.InternalServerError(c, "failed to fetch member: "+err.Error())
+		return response.InternalError(c, "failed to fetch member", err)
 	}
 	if m == nil {
 		return response.NotFound(c, "member not found")
@@ -288,7 +288,7 @@ func (h *LoanPrintHandler) GetCollateral(c *fiber.Ctx) error {
 	// 2. Get savings accounts
 	accounts, err := h.savingsRepo.GetByMembNo(ctx, membNo)
 	if err != nil {
-		return response.InternalServerError(c, "failed to fetch savings: "+err.Error())
+		return response.InternalError(c, "failed to fetch savings", err)
 	}
 
 	// 3. Build response with 95% caps

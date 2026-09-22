@@ -44,7 +44,7 @@ func (h *FlommastImportHandler) Preview(c *fiber.Ctx) error {
 
 	summary, err := h.importRepo.BuildDiff(c.Context(), rows)
 	if err != nil {
-		return response.InternalServerError(c, fmt.Sprintf("Build diff failed: %v", err))
+		return response.InternalError(c, "Build diff failed", err)
 	}
 
 	return response.Success(c, "Preview generated", fiber.Map{
@@ -81,7 +81,7 @@ func (h *FlommastImportHandler) Apply(c *fiber.Ctx) error {
 		BatchSize:     500,
 	})
 	if err != nil {
-		return response.InternalServerError(c, fmt.Sprintf("Apply failed: %v", err))
+		return response.InternalError(c, "Apply failed", err)
 	}
 
 	return response.Success(c, "Flommast updated successfully", fiber.Map{

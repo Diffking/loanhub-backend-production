@@ -1,6 +1,10 @@
 package response
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+)
 
 // Response represents a standard API response
 type Response struct {
@@ -64,4 +68,11 @@ func Conflict(c *fiber.Ctx, message string) error {
 // InternalServerError sends a 500 internal server error response
 func InternalServerError(c *fiber.Ctx, message string) error {
 	return Error(c, fiber.StatusInternalServerError, message)
+}
+
+// InternalError logs err server-side and sends only message to the client
+// (ไม่ส่งรายละเอียด SQL/ระบบภายในออกไปให้ผู้ใช้เห็น)
+func InternalError(c *fiber.Ctx, message string, err error) error {
+	log.Printf("❌ %s %s: %s: %v", c.Method(), c.Path(), message, err)
+	return InternalServerError(c, message)
 }

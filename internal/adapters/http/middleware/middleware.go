@@ -109,6 +109,25 @@ func AuthRateLimiter() fiber.Handler {
 	})
 }
 
+// RefreshRateLimiter limits token refresh (30 requests per minute per IP)
+// หลวมกว่า login เพราะ refresh เกิดอัตโนมัติ และหลายเครื่องในสำนักงานใช้ IP เดียวกัน
+func RefreshRateLimiter() fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP() + "-refresh"
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"success": false,
+				"error":   "Too many refresh requests",
+				"message": "กรุณารอสักครู่ก่อนลองใหม่",
+			})
+		},
+	})
+}
+
 // StrictRateLimiter creates an even stricter rate limiter for sensitive operations
 // 3 requests per minute per IP (for password reset, etc.)
 func StrictRateLimiter() fiber.Handler {

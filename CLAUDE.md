@@ -35,8 +35,8 @@ Local config: copy `.env.example` to `.env` and fill in values — `config.Load(
 
 Docker (used for the actual VPS deployment):
 ```bash
-docker-compose up -d --build
-docker-compose down            # do NOT use `-v` — destroys the DB volume
+docker compose up -d --build   # v2 only — docker-compose v1 (1.29) fails with KeyError ContainerConfig
+docker compose down            # do NOT use `-v` — destroys the DB volume
 ```
 
 ## Architecture

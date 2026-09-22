@@ -40,6 +40,10 @@ func Setup(app *fiber.App, cfg *config.Config) {
 	app.Use(limiter.New(limiter.Config{
 		Max:        100,
 		Expiration: 1 * time.Minute,
+		// CORS preflight ไม่นับโควตา (หน้าเว็บ 1 หน้ายิง OPTIONS หลายตัว)
+		Next: func(c *fiber.Ctx) bool {
+			return c.Method() == fiber.MethodOptions
+		},
 		KeyGenerator: func(c *fiber.Ctx) string {
 			return c.IP()
 		},

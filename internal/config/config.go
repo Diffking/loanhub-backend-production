@@ -70,6 +70,12 @@ func Load() (*Config, error) {
 		Sync:     loadSyncConfig(),
 	}
 
+	if appMode == "prod" {
+		if err := validateProdSecrets(config.JWT); err != nil {
+			return nil, err
+		}
+	}
+
 	// Set global config
 	AppConfig = config
 
@@ -109,6 +115,17 @@ func loadJWTConfig(mode string) JWTConfig {
 		AccessTokenMins:  accessMins,
 		RefreshTokenDays: refreshDays,
 	}
+}
+
+// validateProdSecrets ไม่ยอมให้ prod รันด้วย JWT secret ค่า default (ใครก็ปลอม token ADMIN ได้)
+func validateProdSecrets(j JWTConfig) error {
+	if j.Secret == "default_secret" || j.RefreshSecret == "default_refresh_secret" {
+		return fmt.Errorf("PROD_JWT_SECRET / PROD_JWT_REFRESH_SECRET must be set in .env (refusing to start with default secret)")
+	}
+	if len(j.Secret) < 32 || len(j.RefreshSecret) < 32 {
+		log.Println("⚠️ WARNING: JWT secrets shorter than 32 chars — rotate to a longer random value (openssl rand -hex 32)")
+	}
+	return nil
 }
 
 // loadCookieConfig loads cookie config based on mode

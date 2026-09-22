@@ -258,7 +258,8 @@ func (h *LIFFHandler) RequestOTP(c *fiber.Ctx) error {
 		}()
 	}
 
-	log.Printf("📱 OTP Generated for member %s, phone %s: %s", membNo, cleanPhone, otpCode)
+	// ห้าม log รหัส OTP / เบอร์เต็ม (PDPA + ใครเห็น log ก็ยืนยันตัวแทนได้)
+	log.Printf("📱 OTP Generated for member %s, phone %s", membNo, maskPhone(cleanPhone))
 
 	return response.Success(c, "ส่ง OTP สำเร็จ", fiber.Map{
 		"phone_masked": maskPhone(cleanPhone),

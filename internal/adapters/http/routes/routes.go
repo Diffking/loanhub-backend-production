@@ -157,11 +157,12 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 		loanPrintHandler, flommastImportHandler, flommastSyncHandler, committeeHandler,
 		reportHandler, cfg)
 
-	// Security: audit log viewer (Admin only)
+	// Security: audit log viewer (Admin + อยู่ใน AUDIT_VIEWER_MEMB_NOS เท่านั้น)
 	auditHandler := handlers.NewAuditHandler(auditLogRepo)
 	apiV1.Get("/admin/audit-logs",
 		middleware.AuthMiddleware(cfg),
 		middleware.AdminOnly(),
+		middleware.AuditViewerOnly(cfg),
 		audit("audit.view"),
 		auditHandler.List,
 	)

@@ -18,6 +18,9 @@ type Config struct {
 	JWT      JWTConfig
 	Cookie   CookieConfig
 	Sync     SyncConfig
+
+	// AuditViewers: memb_no ที่ดู audit log ได้ (AUDIT_VIEWER_MEMB_NOS, คั่นด้วย ,) — ว่าง = ไม่มีใครดูได้
+	AuditViewers []string
 }
 
 // DatabaseConfig holds database configuration
@@ -68,6 +71,8 @@ func Load() (*Config, error) {
 		JWT:      loadJWTConfig(appMode),
 		Cookie:   loadCookieConfig(appMode),
 		Sync:     loadSyncConfig(),
+
+		AuditViewers: splitList(getEnv("AUDIT_VIEWER_MEMB_NOS", "")),
 	}
 
 	if appMode == "prod" {
@@ -160,6 +165,30 @@ func (c *Config) IsDev() bool {
 // IsProd returns true if running in production mode
 func (c *Config) IsProd() bool {
 	return c.AppMode == "prod"
+}
+
+// CanViewAudit reports whether a member number may read the audit log
+func (c *Config) CanViewAudit(membNo string) bool {
+	if membNo == "" {
+		return false
+	}
+	for _, m := range c.AuditViewers {
+		if m == membNo {
+			return true
+		}
+	}
+	return false
+}
+
+// splitList parses "a, b,,c" → [a b c]
+func splitList(v string) []string {
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // GetAllowedOrigins returns allowed origins for CORS

@@ -478,6 +478,8 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 			"phone":             phone,
 			"line_picture_url":  linePictureURL,
 			"line_display_name": lineDisplayName,
+			// frontend ใช้ซ่อน/แสดงเมนูประวัติการเข้าถึงข้อมูล (backend ตรวจซ้ำที่ API เสมอ)
+			"can_view_audit": role == "ADMIN" && h.cfg.CanViewAudit(membNo),
 		},
 	})
 }

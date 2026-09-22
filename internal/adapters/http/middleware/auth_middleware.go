@@ -81,6 +81,17 @@ func OfficerOrAdmin() fiber.Handler {
 	return RoleMiddleware("OFFICER", "ADMIN")
 }
 
+// AuditViewerOnly allows only members listed in AUDIT_VIEWER_MEMB_NOS (use after AuthMiddleware)
+func AuditViewerOnly(cfg *config.Config) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		membNo, _ := c.Locals("membNo").(string)
+		if !cfg.CanViewAudit(membNo) {
+			return response.Forbidden(c, "You don't have permission to view the audit log")
+		}
+		return c.Next()
+	}
+}
+
 // OptionalAuth middleware - doesn't require auth but sets user info if token present
 func OptionalAuth(cfg *config.Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {

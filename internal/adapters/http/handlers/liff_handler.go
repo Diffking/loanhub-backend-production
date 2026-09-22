@@ -9,12 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"spsc-loaneasy/internal/config"
 	"spsc-loaneasy/internal/core/services"
-	"spsc-loaneasy/internal/pkg/jwt"
 	"spsc-loaneasy/internal/pkg/response"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -85,13 +84,14 @@ type LIFFHandler struct {
 	lineService     *services.LINEService
 	otpService      *services.OTPService
 	smsService      *services.SMSService
-	jwtSecret       string
+	authService     *services.AuthService
+	cfg             *config.Config
 	accessTokenExp  int
 	refreshTokenExp int
 }
 
-func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService, smsService *services.SMSService) *LIFFHandler {
-	jwtSecret := os.Getenv("PROD_JWT_SECRET")
+func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService, smsService *services.SMSService, authService *services.AuthService, cfg *config.Config) *LIFFHandler {
+	// TODO(cookie-migration step C): ใช้ cfg.JWT.AccessTokenMins (15 นาที) เมื่อ frontend refresh ผ่าน cookie ได้แล้ว
 	accessTokenExp := 1440
 	if exp := os.Getenv("ACCESS_TOKEN_EXPIRY"); exp != "" {
 		if val, err := strconv.Atoi(exp); err == nil {
@@ -109,7 +109,8 @@ func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *
 		lineService:     lineService,
 		otpService:      otpService,
 		smsService:      smsService,
-		jwtSecret:       jwtSecret,
+		authService:     authService,
+		cfg:             cfg,
 		accessTokenExp:  accessTokenExp,
 		refreshTokenExp: refreshTokenExp,
 	}
@@ -447,19 +448,14 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 		req.LineDisplayName, req.LinePictureURL,
 		req.NetworkType, id)
 
-	accessToken, err := jwt.GenerateAccessToken(id, membNo, username, role, h.jwtSecret, h.accessTokenExp)
+	// ออก token ผ่าน AuthService: refresh token ใช้ refresh secret + เก็บเป็น hash + rotate ได้
+	// (เดิมเซ็นด้วย access secret และเก็บ token ดิบ → /auth/refresh ใช้ไม่ได้)
+	tokens, err := h.authService.IssueTokens(c.Context(), id, h.accessTokenExp)
 	if err != nil {
-		return response.InternalServerError(c, "ไม่สามารถสร้าง Token ได้")
+		return response.InternalError(c, "ไม่สามารถสร้าง Token ได้", err)
 	}
-	tokenID := uuid.New().String()
-	refreshToken, err := jwt.GenerateRefreshToken(id, tokenID, h.jwtSecret, h.refreshTokenExp)
-	if err != nil {
-		return response.InternalServerError(c, "ไม่สามารถสร้าง Token ได้")
-	}
-
-	expiresAt := time.Now().AddDate(0, 0, h.refreshTokenExp)
-	h.db.Exec("INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())",
-		id, refreshToken, expiresAt)
+	accessToken, refreshToken := tokens.AccessToken, tokens.RefreshToken
+	writeAuthCookies(c, h.cfg, accessToken, refreshToken, h.accessTokenExp)
 
 	if req.LinePictureURL != "" {
 		linePictureURL = &req.LinePictureURL

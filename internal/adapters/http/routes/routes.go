@@ -101,7 +101,7 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	// ============================================================
 	otpService := services.NewOTPService(db)
 	smsService := services.NewSMSService(lineService)
-	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService)
+	liffHandler := handlers.NewLIFFHandler(db, lineService, otpService, smsService, authService, cfg)
 
 	// v2.2.2: Mobile Handler (Aggregated APIs)
 	mobileHandler := handlers.NewMobileHandler(
@@ -182,8 +182,8 @@ func setupAPIV1Routes(
 	setupAuthRoutes(authRoutes, authHandler, cfg)
 
 	// LINE routes
-	lineRoutes := router.Group("/auth/line")
-	setupLINERoutes(lineRoutes, lineHandler, cfg)
+	// /auth/line/* (LINE OAuth แบบ redirect) ปิดแล้ว 2026-09-22: ไม่มี frontend ใช้ (ใช้ LIFF แทน)
+	// และออก token แบบเดิมที่ไม่ผ่าน AuthService — lineHandler ยังใช้สำหรับ LINE service อยู่
 
 	// LIFF routes (for LIFF SDK login - PUBLIC)
 	liffRoutes := router.Group("/auth/liff")
@@ -286,15 +286,6 @@ func setupAuthRoutes(router fiber.Router, handler *handlers.AuthHandler, cfg *co
 	router.Post("/logout", handler.Logout)
 	router.Get("/me", middleware.AuthMiddleware(cfg), handler.Me)
 	router.Post("/logout-all", middleware.AuthMiddleware(cfg), handler.LogoutAll)
-}
-
-// setupLINERoutes configures LINE authentication routes
-func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *config.Config) {
-	router.Get("/url", handler.GetLINELoginURL)
-	router.Get("/callback", handler.LINECallback)
-	// /link, /unlink ถูกถอดออก (2026-09-22): LinkLINE รับ line_user_id จาก body โดยไม่ verify กับ LINE
-	// → ผูก LINE ID ของคนอื่นเข้าบัญชีตัวเองได้ ไม่มี frontend ใช้ — การผูก LINE ทำผ่าน LIFF register แทน
-	router.Get("/status", middleware.AuthMiddleware(cfg), handler.GetLINEStatus)
 }
 
 // setupLIFFRoutes configures LIFF routes

@@ -362,6 +362,36 @@ func (s *AuthService) generateTokens(user *models.User) (*TokenPair, error) {
 }
 
 // storeRefreshToken stores a refresh token in the database
+// IssueTokens creates and stores an access/refresh token pair for an existing user
+// (used by LIFF login so it shares the same hashed, rotating refresh-token flow).
+// accessMins > 0 overrides the configured access-token lifetime.
+func (s *AuthService) IssueTokens(ctx context.Context, userID uint, accessMins int) (*TokenPair, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	tokens, err := s.generateTokens(user)
+	if err != nil {
+		return nil, err
+	}
+
+	if accessMins > 0 && accessMins != s.cfg.JWT.AccessTokenMins {
+		tokens.AccessToken, err = jwt.GenerateAccessToken(
+			user.ID, user.MembNo, user.Username, user.Role,
+			s.cfg.JWT.Secret, accessMins,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.storeRefreshToken(ctx, user.ID, tokens.RefreshToken); err != nil {
+		return nil, err
+	}
+	return tokens, nil
+}
+
 func (s *AuthService) storeRefreshToken(ctx context.Context, userID uint, refreshToken string) error {
 	tokenHash := password.HashToken(refreshToken)
 	expiresAt := jwt.GetExpiryTime(s.cfg.JWT.RefreshTokenDays)

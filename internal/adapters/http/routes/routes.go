@@ -138,7 +138,10 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	app.Get("/health", healthHandler.HealthCheck)
 
 	// Swagger documentation
-	app.Get("/swagger/*", swagger.HandlerDefault)
+	// prod ไม่เปิด — ไม่ให้คนนอกเห็นแผนที่ API ทั้งหมด
+	if cfg.IsDev() {
+		app.Get("/swagger/*", swagger.HandlerDefault)
+	}
 
 	// API v1 group
 	apiV1 := app.Group("/api/v1")
@@ -277,9 +280,9 @@ func setupAPIV1Routes(
 
 // setupAuthRoutes configures authentication routes
 func setupAuthRoutes(router fiber.Router, handler *handlers.AuthHandler, cfg *config.Config) {
-	router.Post("/register", handler.Register)
-	router.Post("/login", handler.Login)
-	router.Post("/refresh", handler.RefreshToken)
+	router.Post("/register", middleware.AuthRateLimiter(), handler.Register)
+	router.Post("/login", middleware.AuthRateLimiter(), handler.Login)
+	router.Post("/refresh", middleware.RefreshRateLimiter(), handler.RefreshToken)
 	router.Post("/logout", handler.Logout)
 	router.Get("/me", middleware.AuthMiddleware(cfg), handler.Me)
 	router.Post("/logout-all", middleware.AuthMiddleware(cfg), handler.LogoutAll)
@@ -289,8 +292,8 @@ func setupAuthRoutes(router fiber.Router, handler *handlers.AuthHandler, cfg *co
 func setupLINERoutes(router fiber.Router, handler *handlers.LINEHandler, cfg *config.Config) {
 	router.Get("/url", handler.GetLINELoginURL)
 	router.Get("/callback", handler.LINECallback)
-	router.Post("/link", middleware.AuthMiddleware(cfg), handler.LinkLINE)
-	router.Post("/unlink", middleware.AuthMiddleware(cfg), handler.UnlinkLINE)
+	// /link, /unlink ถูกถอดออก (2026-09-22): LinkLINE รับ line_user_id จาก body โดยไม่ verify กับ LINE
+	// → ผูก LINE ID ของคนอื่นเข้าบัญชีตัวเองได้ ไม่มี frontend ใช้ — การผูก LINE ทำผ่าน LIFF register แทน
 	router.Get("/status", middleware.AuthMiddleware(cfg), handler.GetLINEStatus)
 }
 

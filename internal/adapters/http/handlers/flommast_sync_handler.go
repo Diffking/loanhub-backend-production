@@ -126,7 +126,7 @@ func (h *FlommastSyncHandler) Sync(c *fiber.Ctx) error {
 	summary, err := h.importRepo.BuildDiff(c.Context(), importRows)
 	if err != nil {
 		h.markFailed(auditLog, started, "diff failed: "+err.Error())
-		return response.InternalServerError(c, "Diff failed: "+err.Error())
+		return response.InternalError(c, "Diff failed", err)
 	}
 
 	// ─── Compute full list of missing memb_nos (not capped by 200-entry preview) ───
@@ -146,7 +146,7 @@ func (h *FlommastSyncHandler) Sync(c *fiber.Ctx) error {
 	)
 	if err != nil {
 		h.markFailed(auditLog, started, "apply failed: "+err.Error())
-		return response.InternalServerError(c, "Apply failed: "+err.Error())
+		return response.InternalError(c, "Apply failed", err)
 	}
 
 	// ─── Phase 3A: post-Apply UPDATE for member_type_code ───
@@ -208,7 +208,7 @@ func (h *FlommastSyncHandler) History(c *fiber.Ctx) error {
 		Order("started_at DESC").
 		Limit(30).
 		Find(&logs).Error; err != nil {
-		return response.InternalServerError(c, "Query failed: "+err.Error())
+		return response.InternalError(c, "Query failed", err)
 	}
 	return response.Success(c, "ok", fiber.Map{
 		"logs":  logs,
@@ -230,7 +230,7 @@ func (h *FlommastSyncHandler) Status(c *fiber.Ctx) error {
 	if err == nil {
 		latestPtr = &latest
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return response.InternalServerError(c, "Query failed: "+err.Error())
+		return response.InternalError(c, "Query failed", err)
 	}
 
 	return response.Success(c, "ok", fiber.Map{
@@ -264,7 +264,7 @@ func (h *FlommastSyncHandler) Missing(c *fiber.Ctx) error {
 		})
 	}
 	if err != nil {
-		return response.InternalServerError(c, "Query failed: "+err.Error())
+		return response.InternalError(c, "Query failed", err)
 	}
 
 	// Decode JSON list
@@ -294,7 +294,7 @@ func (h *FlommastSyncHandler) Missing(c *fiber.Ctx) error {
 		Where("mast_memb_no IN ?", membNos).
 		Order("mast_memb_no").
 		Find(&members).Error; err != nil {
-		return response.InternalServerError(c, "Member detail query failed: "+err.Error())
+		return response.InternalError(c, "Member detail query failed", err)
 	}
 
 	return response.Success(c, "ok", fiber.Map{

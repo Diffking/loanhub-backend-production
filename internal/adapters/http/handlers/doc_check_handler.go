@@ -290,7 +290,7 @@ func (h *DocCheckHandler) NotifyLineIncompleteDoc(c *fiber.Ctx) error {
 		case errors.Is(err, services.ErrNoIncompleteItems):
 			return response.BadRequest(c, "เอกสารครบถ้วนแล้ว ไม่มีรายการที่ต้องแจ้งเตือน")
 		default:
-			return response.InternalServerError(c, "ส่ง LINE ไม่สำเร็จ: "+err.Error())
+			return response.InternalError(c, "ส่ง LINE ไม่สำเร็จ", err)
 		}
 	}
 

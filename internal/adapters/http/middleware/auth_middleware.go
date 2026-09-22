@@ -26,10 +26,7 @@ func AuthMiddleware(cfg *config.Config) fiber.Handler {
 			}
 		}
 
-		// 3. If not in header, try query param ?token= (for SSE EventSource)
-		if accessToken == "" {
-			accessToken = c.Query("token")
-		}
+		// (เลิกรับ ?token= ใน URL แล้ว — ไม่มี SSE ใช้ และ token ใน URL หลุดไปอยู่ใน log)
 
 		// 4. No token found
 		if accessToken == "" {
@@ -98,11 +95,6 @@ func OptionalAuth(cfg *config.Config) fiber.Handler {
 			if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 				accessToken = strings.TrimPrefix(authHeader, "Bearer ")
 			}
-		}
-
-		// If not in header, try query param ?token= (for SSE EventSource)
-		if accessToken == "" {
-			accessToken = c.Query("token")
 		}
 
 		// If token exists, validate and set user info

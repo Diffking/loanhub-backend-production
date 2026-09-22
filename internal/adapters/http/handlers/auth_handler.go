@@ -167,8 +167,8 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 // @Failure 401 {object} response.Response
 // @Router /auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
-	// Get refresh token from cookie
-	refreshToken := c.Cookies("refresh_token")
+	// Get refresh token from cookie (หน้าเว็บเก่าส่งใน body — รองรับช่วงเปลี่ยนผ่าน)
+	refreshToken := refreshTokenFromRequest(c)
 	if refreshToken == "" {
 		return response.Unauthorized(c, "Refresh token not found")
 	}
@@ -197,9 +197,11 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 	// Set new cookies
 	h.setAuthCookies(c, result.AccessToken, result.RefreshToken)
 
+	// TODO(cookie-migration step C): เลิกส่ง token ใน body เมื่อทุก frontend ใช้ cookie แล้ว
 	return response.Success(c, "Token refreshed successfully", fiber.Map{
-		"access_token": result.AccessToken,
-		"user":         result.User,
+		"access_token":  result.AccessToken,
+		"refresh_token": result.RefreshToken,
+		"user":          result.User,
 	})
 }
 
@@ -212,8 +214,8 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 // @Success 200 {object} response.Response
 // @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	// Get refresh token from cookie
-	refreshToken := c.Cookies("refresh_token")
+	// Get refresh token from cookie (หรือ body ช่วงเปลี่ยนผ่าน)
+	refreshToken := refreshTokenFromRequest(c)
 	if refreshToken != "" {
 		// Revoke refresh token
 		_ = h.authService.Logout(c.Context(), refreshToken)
@@ -283,16 +285,21 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 
 // setAuthCookies sets access and refresh token cookies
 func (h *AuthHandler) setAuthCookies(c *fiber.Ctx, accessToken, refreshToken string) {
+	writeAuthCookies(c, h.cfg, accessToken, refreshToken, h.cfg.JWT.AccessTokenMins)
+}
+
+// writeAuthCookies sets httpOnly auth cookies (shared by password login and LIFF login)
+func writeAuthCookies(c *fiber.Ctx, cfg *config.Config, accessToken, refreshToken string, accessMins int) {
 	// Access token cookie (shorter expiry)
 	c.Cookie(&fiber.Cookie{
 		Name:     "access_token",
 		Value:    accessToken,
 		Path:     "/",
-		MaxAge:   h.cfg.JWT.AccessTokenMins * 60, // Convert minutes to seconds
-		Secure:   h.cfg.Cookie.Secure,
+		MaxAge:   accessMins * 60, // Convert minutes to seconds
+		Secure:   cfg.Cookie.Secure,
 		HTTPOnly: true,
-		SameSite: h.cfg.Cookie.SameSite,
-		Domain:   h.cfg.Cookie.Domain,
+		SameSite: cfg.Cookie.SameSite,
+		Domain:   cfg.Cookie.Domain,
 	})
 
 	// Refresh token cookie (longer expiry)
@@ -300,12 +307,28 @@ func (h *AuthHandler) setAuthCookies(c *fiber.Ctx, accessToken, refreshToken str
 		Name:     "refresh_token",
 		Value:    refreshToken,
 		Path:     "/",
-		MaxAge:   h.cfg.JWT.RefreshTokenDays * 24 * 60 * 60, // Convert days to seconds
-		Secure:   h.cfg.Cookie.Secure,
+		MaxAge:   cfg.JWT.RefreshTokenDays * 24 * 60 * 60, // Convert days to seconds
+		Secure:   cfg.Cookie.Secure,
 		HTTPOnly: true,
-		SameSite: h.cfg.Cookie.SameSite,
-		Domain:   h.cfg.Cookie.Domain,
+		SameSite: cfg.Cookie.SameSite,
+		Domain:   cfg.Cookie.Domain,
 	})
+}
+
+// refreshTokenFromRequest reads the refresh token from the httpOnly cookie,
+// falling back to a JSON body {"refresh_token": "..."} sent by older frontends.
+// TODO(cookie-migration step C): cookie only.
+func refreshTokenFromRequest(c *fiber.Ctx) string {
+	if t := c.Cookies("refresh_token"); t != "" {
+		return t
+	}
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.BodyParser(&body); err == nil {
+		return strings.TrimSpace(body.RefreshToken)
+	}
+	return ""
 }
 
 // clearAuthCookies clears auth cookies

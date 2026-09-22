@@ -632,6 +632,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&CommitteeMember{},
 		&CommitteeVisibilitySetting{},
 		&PDPASetting{},
+		// Security: audit log
+		&AuditLog{},
 	)
 }
 

@@ -58,8 +58,29 @@ func (s *CronService) Start() {
 		return
 	}
 
+	// Audit log retention (PDPA: ไม่เก็บเกินจำเป็น) — ลบ log เก่ากว่า 1 ปี ทุกวัน 03:15
+	if _, err := s.cron.AddFunc("15 3 * * *", s.PurgeOldAuditLogs); err != nil {
+		log.Printf("❌ Failed to add audit purge job: %v", err)
+	}
+
 	s.cron.Start()
-	log.Println("✅ Cron scheduler started (Appointment reminders at 08:30)")
+	log.Println("✅ Cron scheduler started (Appointment reminders at 08:30, audit purge at 03:15)")
+}
+
+// AuditLogRetention is how long audit log entries are kept
+const AuditLogRetention = 365 * 24 * time.Hour
+
+// PurgeOldAuditLogs deletes audit log entries older than AuditLogRetention
+func (s *CronService) PurgeOldAuditLogs() {
+	cutoff := time.Now().Add(-AuditLogRetention)
+	res := s.db.Exec("DELETE FROM audit_logs WHERE created_at < ?", cutoff)
+	if res.Error != nil {
+		log.Printf("❌ Audit log purge failed: %v", res.Error)
+		return
+	}
+	if res.RowsAffected > 0 {
+		log.Printf("🧹 Purged %d audit log entries older than %s", res.RowsAffected, cutoff.Format("2006-01-02"))
+	}
 }
 
 // Stop stops the cron scheduler

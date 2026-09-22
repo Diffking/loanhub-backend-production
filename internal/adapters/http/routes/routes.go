@@ -303,13 +303,14 @@ func setupLIFFRoutes(router fiber.Router, handler *handlers.LIFFHandler) {
 	router.Post("/login", middleware.AuthRateLimiter(), handler.LoginWithLiff)
 }
 
-// setupUserRoutes configures user management routes (Admin only)
+// setupUserRoutes configures user management routes
+// list: Officer/Admin (หน้า Mortgages ใช้เลือกเจ้าหน้าที่) — อย่างอื่น Admin only
 func setupUserRoutes(router fiber.Router, handler *handlers.UserHandler) {
-	router.Get("/", handler.ListUsers)
-	router.Get("/:id", handler.GetUser)
-	router.Put("/:id", handler.UpdateUser)
-	router.Delete("/:id", handler.DeleteUser)
-	router.Put("/:id/role", handler.SetUserRole)
+	router.Get("/", middleware.OfficerOrAdmin(), handler.ListUsers)
+	router.Get("/:id", middleware.AdminOnly(), handler.GetUser)
+	router.Put("/:id", middleware.AdminOnly(), handler.UpdateUser)
+	router.Delete("/:id", middleware.AdminOnly(), handler.DeleteUser)
+	router.Put("/:id/role", middleware.AdminOnly(), handler.SetUserRole)
 }
 
 // setupProfileRoutes configures profile routes (Authenticated)
@@ -343,30 +344,31 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 }
 
 // setupMasterRoutes configures master data routes (Phase 4)
+// read: ทุกคนที่ login (dropdown) — create/update/delete: Admin only
 func setupMasterRoutes(router fiber.Router, handler *handlers.MasterHandler) {
 	router.Get("/loan-types", handler.ListLoanTypes)
 	router.Get("/loan-types/:id", handler.GetLoanType)
-	router.Post("/loan-types", handler.CreateLoanType)
-	router.Put("/loan-types/:id", handler.UpdateLoanType)
-	router.Delete("/loan-types/:id", handler.DeleteLoanType)
+	router.Post("/loan-types", middleware.AdminOnly(), handler.CreateLoanType)
+	router.Put("/loan-types/:id", middleware.AdminOnly(), handler.UpdateLoanType)
+	router.Delete("/loan-types/:id", middleware.AdminOnly(), handler.DeleteLoanType)
 
 	router.Get("/loan-steps", handler.ListLoanSteps)
 	router.Get("/loan-steps/:id", handler.GetLoanStep)
-	router.Post("/loan-steps", handler.CreateLoanStep)
-	router.Put("/loan-steps/:id", handler.UpdateLoanStep)
-	router.Delete("/loan-steps/:id", handler.DeleteLoanStep)
+	router.Post("/loan-steps", middleware.AdminOnly(), handler.CreateLoanStep)
+	router.Put("/loan-steps/:id", middleware.AdminOnly(), handler.UpdateLoanStep)
+	router.Delete("/loan-steps/:id", middleware.AdminOnly(), handler.DeleteLoanStep)
 
 	router.Get("/loan-docs", handler.ListLoanDocs)
 	router.Get("/loan-docs/:id", handler.GetLoanDoc)
-	router.Post("/loan-docs", handler.CreateLoanDoc)
-	router.Put("/loan-docs/:id", handler.UpdateLoanDoc)
-	router.Delete("/loan-docs/:id", handler.DeleteLoanDoc)
+	router.Post("/loan-docs", middleware.AdminOnly(), handler.CreateLoanDoc)
+	router.Put("/loan-docs/:id", middleware.AdminOnly(), handler.UpdateLoanDoc)
+	router.Delete("/loan-docs/:id", middleware.AdminOnly(), handler.DeleteLoanDoc)
 
 	router.Get("/loan-appts", handler.ListLoanAppts)
 	router.Get("/loan-appts/:id", handler.GetLoanAppt)
-	router.Post("/loan-appts", handler.CreateLoanAppt)
-	router.Put("/loan-appts/:id", handler.UpdateLoanAppt)
-	router.Delete("/loan-appts/:id", handler.DeleteLoanAppt)
+	router.Post("/loan-appts", middleware.AdminOnly(), handler.CreateLoanAppt)
+	router.Put("/loan-appts/:id", middleware.AdminOnly(), handler.UpdateLoanAppt)
+	router.Delete("/loan-appts/:id", middleware.AdminOnly(), handler.DeleteLoanAppt)
 }
 
 // setupDashboardRoutes configures dashboard routes (Phase 5)
@@ -394,9 +396,9 @@ func setupAPIV2Routes(router fiber.Router, mobileHandler *handlers.MobileHandler
 func setupDocItemRoutes(router fiber.Router, handler *handlers.DocCheckHandler) {
 	router.Get("/doc-items", handler.ListDocItems)
 	router.Get("/doc-items/:id", handler.GetDocItem)
-	router.Post("/doc-items", handler.CreateDocItem)
-	router.Put("/doc-items/:id", handler.UpdateDocItem)
-	router.Delete("/doc-items/:id", handler.DeleteDocItem)
+	router.Post("/doc-items", middleware.AdminOnly(), handler.CreateDocItem)
+	router.Put("/doc-items/:id", middleware.AdminOnly(), handler.UpdateDocItem)
+	router.Delete("/doc-items/:id", middleware.AdminOnly(), handler.DeleteDocItem)
 }
 
 // setupDocCheckRoutes configures mortgage doc check routes

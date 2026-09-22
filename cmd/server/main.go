@@ -73,6 +73,14 @@ func main() {
 		AppName:      "SPSC loanEasy API v1.0",
 		ErrorHandler: middleware.CustomErrorHandler,
 		BodyLimit:    12 * 1024 * 1024, // 12 MB — สำหรับ flommast SQL import (default 4MB ไม่พอ)
+
+		// อยู่หลัง nginx บน VPS เดียวกัน → อ่าน IP จริงจาก X-Real-IP
+		// เชื่อ header เฉพาะ request ที่มาจาก nginx (localhost) กันปลอม header ยิงตรงพอร์ต
+		// ถ้าไม่มี header / IP ไม่ valid → fallback เป็น remote IP เดิม
+		ProxyHeader:             "X-Real-IP",
+		EnableTrustedProxyCheck: true,
+		TrustedProxies:          []string{"127.0.0.1", "::1"},
+		EnableIPValidation:      true,
 	})
 
 	// Setup middlewares

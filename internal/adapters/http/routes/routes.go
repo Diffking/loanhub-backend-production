@@ -340,7 +340,7 @@ func setupMortgageRoutes(router fiber.Router, handler *handlers.MortgageHandler,
 	officerRoutes := router.Group("")
 	officerRoutes.Use(middleware.OfficerOrAdmin())
 	officerRoutes.Post("/", audit("mortgage.create"), handler.Create)
-	officerRoutes.Get("/", audit("mortgage.list"), handler.List)
+	officerRoutes.Get("/", handler.List) // ไม่ audit: หน้า Officer ดึงทุก 15 วิ → log บวมโดยไม่ได้ข้อมูลที่ใช้สืบได้
 	officerRoutes.Get("/:id", audit("mortgage.view"), handler.GetByID)
 	officerRoutes.Get("/:id/history", handler.GetHistory)
 	officerRoutes.Get("/:id/docs", handler.GetDocs)

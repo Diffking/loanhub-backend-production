@@ -197,11 +197,10 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 	// Set new cookies
 	h.setAuthCookies(c, result.AccessToken, result.RefreshToken)
 
-	// TODO(cookie-migration step C): เลิกส่ง token ใน body เมื่อทุก frontend ใช้ cookie แล้ว
+	// step C: refresh token อยู่ใน cookie เท่านั้น
 	return response.Success(c, "Token refreshed successfully", fiber.Map{
-		"access_token":  result.AccessToken,
-		"refresh_token": result.RefreshToken,
-		"user":          result.User,
+		"access_token": result.AccessToken,
+		"user":         result.User,
 	})
 }
 
@@ -317,7 +316,7 @@ func writeAuthCookies(c *fiber.Ctx, cfg *config.Config, accessToken, refreshToke
 
 // refreshTokenFromRequest reads the refresh token from the httpOnly cookie,
 // falling back to a JSON body {"refresh_token": "..."} sent by older frontends.
-// TODO(cookie-migration step C): cookie only.
+// TODO: ลบ fallback ได้หลัง 2026-10-02 (refresh token ชุดเก่าอายุ 7 วันหมดหมดแล้ว)
 func refreshTokenFromRequest(c *fiber.Ctx) string {
 	if t := c.Cookies("refresh_token"); t != "" {
 		return t

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -58,8 +59,37 @@ func (s *CronService) Start() {
 		return
 	}
 
+	// Audit log retention (AUDIT_LOG_RETENTION_DAYS, ค่าเริ่มต้น 90 วัน) — ลบ log ที่เกินกำหนด ทุกวัน 03:15
+	if _, err := s.cron.AddFunc("15 3 * * *", s.PurgeOldAuditLogs); err != nil {
+		log.Printf("❌ Failed to add audit purge job: %v", err)
+	}
+
 	s.cron.Start()
-	log.Println("✅ Cron scheduler started (Appointment reminders at 08:30)")
+	log.Println("✅ Cron scheduler started (Appointment reminders at 08:30, audit purge at 03:15)")
+}
+
+// DefaultAuditLogRetentionDays: พ.ร.บ.คอมพิวเตอร์ฯ ม.26 ให้ผู้ให้บริการเก็บข้อมูลจราจรไม่น้อยกว่า 90 วัน
+const DefaultAuditLogRetentionDays = 90
+
+// auditLogRetentionDays reads AUDIT_LOG_RETENTION_DAYS (fallback 90)
+func auditLogRetentionDays() int {
+	if v, err := strconv.Atoi(os.Getenv("AUDIT_LOG_RETENTION_DAYS")); err == nil && v > 0 {
+		return v
+	}
+	return DefaultAuditLogRetentionDays
+}
+
+// PurgeOldAuditLogs deletes audit log entries older than the retention period
+func (s *CronService) PurgeOldAuditLogs() {
+	cutoff := time.Now().AddDate(0, 0, -auditLogRetentionDays())
+	res := s.db.Exec("DELETE FROM audit_logs WHERE created_at < ?", cutoff)
+	if res.Error != nil {
+		log.Printf("❌ Audit log purge failed: %v", res.Error)
+		return
+	}
+	if res.RowsAffected > 0 {
+		log.Printf("🧹 Purged %d audit log entries older than %s", res.RowsAffected, cutoff.Format("2006-01-02"))
+	}
 }
 
 // Stop stops the cron scheduler

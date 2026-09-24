@@ -91,8 +91,9 @@ type LIFFHandler struct {
 }
 
 func NewLIFFHandler(db *gorm.DB, lineService *services.LINEService, otpService *services.OTPService, smsService *services.SMSService, authService *services.AuthService, cfg *config.Config) *LIFFHandler {
-	// TODO(cookie-migration step C): ใช้ cfg.JWT.AccessTokenMins (15 นาที) เมื่อ frontend refresh ผ่าน cookie ได้แล้ว
-	accessTokenExp := 1440
+	// step C (2026-09-24): ใช้ค่ากลาง ACCESS_TOKEN_MINUTES (15 นาที) — frontend refresh ผ่าน cookie ได้แล้ว
+	// ACCESS_TOKEN_EXPIRY ยังใช้ override ได้ถ้าจำเป็น
+	accessTokenExp := 0
 	if exp := os.Getenv("ACCESS_TOKEN_EXPIRY"); exp != "" {
 		if val, err := strconv.Atoi(exp); err == nil {
 			accessTokenExp = val
@@ -454,8 +455,8 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 	if err != nil {
 		return response.InternalError(c, "ไม่สามารถสร้าง Token ได้", err)
 	}
-	accessToken, refreshToken := tokens.AccessToken, tokens.RefreshToken
-	writeAuthCookies(c, h.cfg, accessToken, refreshToken, h.accessTokenExp)
+	accessToken := tokens.AccessToken
+	writeAuthCookies(c, h.cfg, accessToken, tokens.RefreshToken, h.cfg.JWT.AccessTokenMins)
 
 	if req.LinePictureURL != "" {
 		linePictureURL = &req.LinePictureURL
@@ -464,9 +465,10 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 		lineDisplayName = &req.LineDisplayName
 	}
 
+	// refresh token อยู่ใน httpOnly cookie เท่านั้น (JS ไม่ต้องเห็น)
+	// access_token ยังส่งไว้เป็นตัวสำรองในหน่วยความจำ เผื่อ browser ที่ไม่ส่ง cookie
 	return response.Success(c, "เข้าสู่ระบบสำเร็จ", fiber.Map{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
+		"access_token": accessToken,
 		"user": fiber.Map{
 			"id":                id,
 			"username":          username,
@@ -478,6 +480,8 @@ func (h *LIFFHandler) LoginWithLiff(c *fiber.Ctx) error {
 			"phone":             phone,
 			"line_picture_url":  linePictureURL,
 			"line_display_name": lineDisplayName,
+			// frontend ใช้ซ่อน/แสดงเมนูประวัติการเข้าถึงข้อมูล (backend ตรวจซ้ำที่ API เสมอ)
+			"can_view_audit": role == "ADMIN" && h.cfg.CanViewAudit(membNo),
 		},
 	})
 }
